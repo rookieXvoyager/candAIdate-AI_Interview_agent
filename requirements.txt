@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pydantic-settings
+firebase-admin
+google-generativeai
+groq
+azure-search-documents
+azure-cognitiveservices-speech
+httpx
+async-exit-stack
+async-generator
