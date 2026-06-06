@@ -1,5 +1,6 @@
-# Gemini Resume/JD parser
+# Gemini Resume/JD parserimport os
 import os
+import docx
 import yaml
 from io import BytesIO
 from pypdf import PdfReader
@@ -19,9 +20,9 @@ class ParsedProfile(BaseModel):
     missing_gap_skills: List[str] = Field(description="Key technical skills or requirements requested in the JD that are missing from the resume.")
 
 # 2. Asynchronous Agent Function
-async def parse_resume_and_jd(resume_bytes: bytes, jd_text: str) -> ParsedProfile:
+async def parse_resume_and_jd(resume_bytes: bytes,file_ext:str, jd_text: str) -> ParsedProfile:
     """
-    Extracts text from a resume PDF, loads the versioned system instructions,
+    Extracts text from a resume (PDF, DOCX or TXT), loads the versioned system instructions,
     and prompts Gemini 2.5 Flash to return a validated, structured user profile.
     """
     # Initialize the new Client architecture
@@ -30,14 +31,27 @@ async def parse_resume_and_jd(resume_bytes: bytes, jd_text: str) -> ParsedProfil
     # Extract text from PDF bytes safely
     resume_text = ""
     try:
-        pdf_stream = BytesIO(resume_bytes)
-        reader = PdfReader(pdf_stream)
-        for page in reader.pages:
-            text = page.extract_text()
-            if text:
-                resume_text += text + "\n"
+        if file_ext==".pdf":
+            pdf_stream = BytesIO(resume_bytes)
+            reader = PdfReader(pdf_stream)
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    resume_text += text + "\n"
+        elif file_ext ==".docx":
+            docx_stream=BytesIO(resume_bytes)
+            doc=docx.Document(docx_stream)
+            for para in doc.paragraphs:
+                resume_text+= para.text+ "\n"
+        elif file_ext ==".txt":
+            resume_text=resume_bytes.decode('utf-8')
+        
+        else:
+            raise ValueError(f"unsupported file format: {file_ext}")
+        
+
     except Exception as e:
-        raise ValueError(f"Failed to read and extract text from the PDF file: {str(e)}")
+        raise ValueError(f"Failed to read and extract text from the {file_ext.upper()} file: {str(e)}")
 
     # Load prompt from our YAML prompt registry
     prompt_path = os.path.join(os.path.dirname(__file__), "..", "prompts", "parser_v1.yaml")

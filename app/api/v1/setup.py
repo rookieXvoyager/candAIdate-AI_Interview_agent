@@ -1,5 +1,6 @@
+import os
 import uuid
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, status
 from app.agents.parser import parse_resume_and_jd, ParsedProfile
 from app.agents.assessor import generate_assessment, Assessment
 from app.core.security import verify_firebase_token
@@ -7,38 +8,56 @@ from app.core.db import save_candidate_profile, save_mcq_assessment  # <-- Impor
 
 router = APIRouter()
 
+ALLOWED_MIME_TYPES={
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/plain"
+}
+
+ALLOWED_EXTENSIONS={".pdf",".docx",".txt"}
+
 @router.post("/parse", response_model=dict)
 async def parse_candidate_context(
-    resume: UploadFile = File(..., description="The candidate's resume PDF file"),
+    resume: UploadFile = File(..., description="The candidate's resume file(PDF, DOCX or TXT)"),
     jd_text: str = Form(..., description="The text of the target job description")
 ):
     """
-    Secure endpoint that accepts a PDF resume and a text Job Description,
+    Secure endpoint that accepts a resume and a text Job Description,
     processes them via the Gemini Parser Agent, and commits the result to Firestore.
     """
     # Validating the file extension
-    if not resume.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are accepted for resume uploads.")
+    file_ext=os.path.splitext(resume.filename)[1].lower()
+    if file_ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid file type '{file_ext}'. Only PDF, DOCX and TXT files are supported"
+        )
     
+    # Validating MIME content type
+    if resume.content_type not in ALLOWED_MIME_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid content type detected. File maybe corrupted or disguised."
+
+        )
     try:
-        # Reading raw file bytes
-        resume_bytes = await resume.read()
-        
-        # 1. Handoff execution to the Parser agent 
-        profile_data = await parse_resume_and_jd(resume_bytes, jd_text)
-        
-        # 2. Mint a mock User ID (Temporary replacement until frontend Auth injection is ready)
-        mock_uid = f"user_{uuid.uuid4().hex[:8]}"
-        
-        # 3. Commit the raw dictionary to the /users Firestore collection
+        resume_bytes= await resume.read()
+        if len(resume_bytes)==0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The uploadeed file is empty")
+        MAX_FILE_SIZE_MB=5
+        if len(resume_bytes)>(MAX_FILE_SIZE_MB*1024*1024):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"File is too large. Maximum allowed size is {MAX_FILE_SIZE_MB}MB.")
+        # handoff exception to the Parser agent (We now pass file_ext)
+        profile_data=await parse_resume_and_jd(resume_bytes, file_ext, jd_text)
+
+        mock_uid=f"user_{uuid.uuid4().hex[:8]}"
+
+        # Commit the raw dictionary to firestore
         await save_candidate_profile(uid=mock_uid, profile_data=profile_data.model_dump())
-        
-        # Return both the identifier and data payload back to the client
         return {
-            "uid": mock_uid,
-            "profile": profile_data
-        }
-    
+            "uid":mock_uid,
+            "profile":profile_data
+        }   
     except ValueError as val_err:
         raise HTTPException(status_code=422, detail=str(val_err))
     except Exception as e:

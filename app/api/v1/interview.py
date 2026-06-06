@@ -1,15 +1,32 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.agents.interviewer import InterviewerAgent
 from app.core.db import db
+import asyncio
+import json
+
 
 router =APIRouter()
+
+async def heartbeat_task(websocket:WebSocket, ping_interval: int=15):
+    """
+    Bg task that sends ping to client's frontend every ping_interval seconds
+    If the socket is closed, they will silently fail and exit
+    """
+    try:
+        while True:
+            await asyncio.sleep(ping_interval)
+            await websocket.send_text(json.dumps({"type":"ping"}))
+    except Exception:
+        pass
+        # Connection closed, bg task gracefully dies
 
 @router.websocket("/stream/{session_id}")
 async def interview_stream(websocket: WebSocket, session_id:str):
     await websocket.accept()
 
+    ping_task=asyncio.create_task(heartbeat_task(websocket, ping_interval=15))
     
-    try:
+    try: 
         session_ref=db.collection("sessions").document(session_id)
         session_doc=session_ref.get()
         
@@ -45,23 +62,38 @@ async def interview_stream(websocket: WebSocket, session_id:str):
         await websocket.send_text(welcome_msg)
 
         while True:
-            user_msg =await websocket.receive_text()
-            transcript.append({"speaker":"Candidate", "text":user_msg})
+            try:
+                user_msg= await asyncio.wait_for(websocket.receive_text(), timeout=45.0)
+                try:
+                    msg_data =json.loads(user_msg)
+                    if msg_data.get("type")=="pong":
+                        continue
+                except json.JSONDecodeError:
+                    pass
 
-            ai_response=await agent.generate_response(user_msg)
+                transcript.append({"speaker":"Candidate", "text":user_msg})
 
-            transcript.append({"speaker":"Interviewer", "text":ai_response})
-            await websocket.send_text(ai_response)
+                ai_response= await agent.generate_response(user_msg)
 
+                transcript.append({"speaker":"Interviewer", "text": ai_response})
+                await websocket.send_text(ai_response)
+            
+            except asyncio.TimeoutError:
+                print(f"Session {session_id} timed out. Zombie connection detected.")
+                break
+            
     except WebSocketDisconnect:
         print(f"Session ended for candidate: {session_id}")
     except Exception as e:
         await websocket.send_text(f"Connection error: {str(e)}")
         await websocket.close()
     finally:
+        # cancel the background ping task so that it doesn't run forever
+        ping_task.cancel()
         # when transcript to firestore when wwebsocket closes
         if 'session_ref' in locals() and 'transcript' in locals() and transcript:
             session_ref.update({
                 "transcript":transcript,
                 "status":"ready_for_evaluation"
             })
+            print(f"Transcript saved for session {session_id}")
