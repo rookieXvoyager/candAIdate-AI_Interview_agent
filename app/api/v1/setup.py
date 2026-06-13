@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, status
 from app.agents.parser import parse_resume_and_jd, ParsedProfile
 from app.agents.assessor import generate_assessment, Assessment
-from app.core.security import verify_firebase_token
+from app.core.security import get_current_user_uid
 from app.core.db import save_candidate_profile, save_mcq_assessment  # <-- Import database triggers
 
 router = APIRouter()
@@ -19,7 +19,8 @@ ALLOWED_EXTENSIONS={".pdf",".docx",".txt"}
 @router.post("/parse", response_model=dict)
 async def parse_candidate_context(
     resume: UploadFile = File(..., description="The candidate's resume file(PDF, DOCX or TXT)"),
-    jd_text: str = Form(..., description="The text of the target job description")
+    jd_text: str = Form(..., description="The text of the target job description"),
+    uid:str=Depends(get_current_user_uid)
 ):
     """
     Secure endpoint that accepts a resume and a text Job Description,
@@ -43,19 +44,18 @@ async def parse_candidate_context(
     try:
         resume_bytes= await resume.read()
         if len(resume_bytes)==0:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The uploadeed file is empty")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The uploaded file is empty")
         MAX_FILE_SIZE_MB=5
         if len(resume_bytes)>(MAX_FILE_SIZE_MB*1024*1024):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"File is too large. Maximum allowed size is {MAX_FILE_SIZE_MB}MB.")
         # handoff exception to the Parser agent (We now pass file_ext)
         profile_data=await parse_resume_and_jd(resume_bytes, file_ext, jd_text)
 
-        mock_uid=f"user_{uuid.uuid4().hex[:8]}"
-
+        
         # Commit the raw dictionary to firestore
-        await save_candidate_profile(uid=mock_uid, profile_data=profile_data.model_dump())
+        await save_candidate_profile(uid=uid, profile_data=profile_data.model_dump())
         return {
-            "uid":mock_uid,
+            "uid":uid,
             "profile":profile_data
         }   
     except ValueError as val_err:
@@ -66,8 +66,9 @@ async def parse_candidate_context(
 
 @router.post("/generate-mcq", response_model=dict)
 async def create_prescreen_quiz(
-    uid: str,  # <-- Require the explicit user mapping ID 
-    profile: ParsedProfile
+    profile: ParsedProfile,
+    uid: str=Depends(get_current_user_uid),  # <-- Require the explicit user mapping ID 
+    
 ):
     """
     Accepts a structured candidate profile, generates a tailored 5-question 
