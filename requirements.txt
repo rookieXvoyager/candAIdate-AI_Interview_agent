@@ -1,8 +1,12 @@
 fastapi
 uvicorn
+python-multipart
 pydantic-settings
 firebase-admin
-google-generativeai
+google-genai
+pypdf
+python-docx
+pyyaml
 groq
 azure-search-documents
 azure-cognitiveservices-speech

@@ -6,6 +6,7 @@ from google import genai
 from google.genai import types # <-- Required for the new configuration syntax
 from app.core.config import settings
 from app.agents.parser import ParsedProfile
+from app.agents._gemini import generate_with_fallback
 
 # 1. Define the Strict Output Schemas
 class MCQOption(BaseModel):
@@ -42,9 +43,10 @@ async def generate_assessment(profile: ParsedProfile) -> Assessment:
     {profile.model_dump_json(indent=2)}
     """
     
-    # Generate content using the new SDK syntax
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
+    # Generate content, falling back across models if rate-limited
+    response = generate_with_fallback(
+        client,
+        models=settings.resolved_models,
         contents=user_prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",

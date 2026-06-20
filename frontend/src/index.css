@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-navy-950 text-slate-200 antialiased font-sans;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5
+      font-semibold text-white shadow-lg shadow-brand-600/20 transition
+      hover:bg-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-400/60
+      disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-navy-700
+      bg-navy-800/60 px-5 py-2.5 font-semibold text-slate-200 transition
+      hover:border-brand-500/60 hover:bg-navy-700 focus:outline-none;
+  }
+
+  .card {
+    @apply rounded-2xl border border-white/10 shadow-xl shadow-black/40;
+    background: rgba(17, 26, 46, 0.55);
+    backdrop-filter: blur(18px) saturate(130%);
+    -webkit-backdrop-filter: blur(18px) saturate(130%);
+    box-shadow: 0 18px 50px -18px rgba(0, 0, 0, 0.65),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  .input-field {
+    @apply w-full rounded-xl border border-navy-700 bg-navy-950/70 px-4 py-3 text-slate-100
+      placeholder-slate-500 transition focus:border-brand-500 focus:outline-none
+      focus:ring-2 focus:ring-brand-500/30;
+  }
+
+  .pill {
+    @apply inline-flex items-center rounded-full px-3 py-1 text-sm font-medium;
+  }
+}
+
+@layer components {
+  /* Frosted glass surface */
+  .glass {
+    background: rgba(255, 255, 255, 0.045);
+    backdrop-filter: blur(22px) saturate(140%);
+    -webkit-backdrop-filter: blur(22px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.7),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+
+  .input-glass {
+    @apply w-full rounded-xl px-4 py-3 text-slate-100 placeholder-slate-500 transition
+      focus:outline-none;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .input-glass:focus {
+    border-color: rgba(129, 140, 248, 0.6);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
+    background: rgba(255, 255, 255, 0.06);
+  }
+}
+
+/* Faint grid backdrop */
+.bg-grid {
+  background-image: linear-gradient(
+      to right,
+      rgba(148, 163, 184, 0.055) 1px,
+      transparent 1px
+    ),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.055) 1px, transparent 1px);
+  background-size: 46px 46px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, #000 50%, transparent 100%);
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, #000 50%, transparent 100%);
+}
+
+/* Slow drift for ambient orbs */
+@keyframes drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(20px, -24px) scale(1.08); }
+}
+.animate-drift {
+  animation: drift 14s ease-in-out infinite;
+}
+
+/* Thin custom scrollbar for chat windows */
+.scroll-thin::-webkit-scrollbar {
+  width: 8px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-navy-700;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}

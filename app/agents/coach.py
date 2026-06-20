@@ -7,6 +7,7 @@ from google.genai import types
 from pydantic import BaseModel, Field
 from typing import List
 from app.core.config import settings
+from app.agents._gemini import generate_with_fallback
 
 class EvaluationResult(BaseModel):
     score: int= Field(..., description="Overall score out of 100 based on technical accuracy and communication.")
@@ -35,8 +36,9 @@ class CoachingAgent:
     INTERVIEW TRANSCRIPT:
     {transcript}
 """
-        response = self.client.models.generate_content(
-            model="gemini-2.5-flash",
+        response = generate_with_fallback(
+            self.client,
+            models=settings.resolved_models,
             contents=prompt,
             config=types.GenerateContentConfig(
                 system_instruction=self.system_prompt,

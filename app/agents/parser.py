@@ -9,6 +9,7 @@ from typing import List
 from google import genai
 from google.genai import types # <-- Added this import
 from app.core.config import settings
+from app.agents._gemini import generate_with_fallback
 
 # 1. Define the Strict Output Schema
 class ParsedProfile(BaseModel):
@@ -72,9 +73,10 @@ async def parse_resume_and_jd(resume_bytes: bytes,file_ext:str, jd_text: str) ->
     \"\"\"
     """
     
-    # Generate content using the new SDK syntax
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
+    # Generate content, falling back across models if rate-limited
+    response = generate_with_fallback(
+        client,
+        models=settings.resolved_models,
         contents=user_prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
