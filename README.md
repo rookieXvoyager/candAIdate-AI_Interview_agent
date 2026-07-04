@@ -1,79 +1,88 @@
 # candAIdate — AI Interview Partner
 
-A personalized mock-interview platform: upload your resume + a job description, get a
-tailored screening quiz, a live AI interview, and a coaching scorecard.
+✨ A personalized mock-interview platform: upload your resume + a job description, get a tailored screening quiz, run a live AI interview, and review a coaching scorecard.
 
 - **Backend:** FastAPI (Python) · Google Gemini · Firebase Admin (Firestore + Auth)
 - **Frontend:** React + Vite + Tailwind CSS · Firebase Auth
 
-> ⚠️ This repo intentionally does **not** include secrets (`.env`,
-> `serviceAccountKey.json`). After cloning you must supply your **own** Firebase
-> project and Gemini API key — see setup below. It will not run until you do.
+> ⚠️ This repo does **not** include secrets. You must supply your own Firebase project, Gemini API key, and local service account file before the app will run.
 
----
+## 🌟 New Features Added
 
-## Prerequisites
+- 🔐 Firebase login/signup with protected routes and token-based API access.
+- 🧠 Gemini-backed resume parsing with fallback model handling for rate limits.
+- 📝 Tailored MCQ pre-screening generated from the parsed candidate profile.
+- 🎙️ Live interview experience with WebSocket chat, heartbeat handling, and transcript persistence.
+- 🗂️ Firestore-backed session history and scorecard storage.
+- 🎧 Browser mic input support in the interview screen, with text fallback.
+- 📊 Coaching feedback generation after the interview transcript is collected.
+
+## 🚀 Prerequisites
 
 - **Python 3.10+** and **Node.js 18+**
-- A free **Google Gemini API key** — https://aistudio.google.com/apikey
-- A free **Firebase project** — https://console.firebase.google.com
+- A **Google Gemini API key**: https://aistudio.google.com/apikey
+- A **Firebase project**: https://console.firebase.google.com
 
-## 1. Clone & install
+## 1) Clone and install
 
 ```bash
 git clone <your-repo-url>
-cd candAIdate-AI_Interview_agent
+cd candAIdate
 
-# Backend deps
+# Backend dependencies
 python -m pip install -r requirements.txt
 
-# Frontend deps
+# Frontend dependencies
 cd frontend
 npm install
 cd ..
 ```
 
-## 2. Set up Firebase (one-time)
+## 2) Set up Firebase
 
 In the [Firebase console](https://console.firebase.google.com):
 
-1. **Create a project.**
-2. **Authentication** → Get started → **Sign-in method** → enable **Email/Password**.
-3. **Firestore Database** → Create database → **start in test mode** (for development).
-4. **Web app config** (frontend): Project Settings → *Your apps* → add a **Web** app →
-   copy the `firebaseConfig` values.
-5. **Service account** (backend): Project Settings → **Service accounts** →
-   *Generate new private key* → save the JSON as **`serviceAccountKey.json`** in the
-   **project root**. (Gitignored — never commit it.)
+1. Create a project.
+2. Go to **Authentication** → **Sign-in method** and enable **Email/Password**.
+3. Go to **Firestore Database** and create a database for development.
+4. Add a **Web app** in Project Settings and copy the `firebaseConfig` values.
+5. Generate a **service account key** in Project Settings → **Service accounts** and save it as `serviceAccountKey.json` in the project root.
 
-## 3. Configure environment files
+## 3) Configure environment files
+
+Create a root `.env` file for the backend:
 
 ```bash
-# Backend (project root)
-cp .env.example .env          # then paste your GEMINI_API_KEY
-
-# Frontend
-cp frontend/.env.example frontend/.env   # then paste your Firebase web config
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-2.5-flash
+GEMINI_FALLBACK_MODELS=gemini-2.5-flash-lite,gemini-2.0-flash
+AZURE_SPEECH_KEY=
+AZURE_SPEECH_REGION=
+AZURE_SEARCH_ENDPOINT=
+AZURE_SEARCH_KEY=
 ```
 
-Fill `frontend/.env` with the values from step 2.4:
+Create `frontend/.env.local` for the frontend Firebase config:
 
-```
+```bash
 VITE_FIREBASE_API_KEY=...
 VITE_FIREBASE_AUTH_DOMAIN=...
 VITE_FIREBASE_PROJECT_ID=...
 VITE_FIREBASE_STORAGE_BUCKET=...
 VITE_FIREBASE_MESSAGING_SENDER_ID=...
 VITE_FIREBASE_APP_ID=...
+VITE_API_BASE=http://127.0.0.1:8000
+VITE_WS_BASE=ws://127.0.0.1:8000
 ```
 
-> The same Firebase project must back **both** the frontend (web config) and the
-> backend (service account), so login tokens verify correctly.
+> The same Firebase project should back both the frontend web config and the backend service account so token verification works correctly.
 
-## 4. Run (two terminals)
+## 4) Run the app
+
+Open two terminals:
 
 ```bash
-# Terminal 1 — backend (project root)
+# Terminal 1 — backend
 python -m uvicorn app.main:app --reload --port 8000
 
 # Terminal 2 — frontend
@@ -82,27 +91,32 @@ npm run dev
 ```
 
 - Backend health check: http://127.0.0.1:8000/health
-- App: http://localhost:5173
+- Frontend app: http://localhost:5173
 
----
+## 🔎 What the app does
 
-## Notes
+1. Upload a resume and job description.
+2. Extract a structured candidate profile with Gemini.
+3. Generate a tailored quiz from that profile.
+4. Run the live interview over WebSocket.
+5. Save transcript and evaluation data to Firestore.
+6. Review past sessions in the history page.
 
-- **Gemini free-tier limits:** the free tier is rate-limited per model. The agents
-  automatically fall back across several models (`GEMINI_FALLBACK_MODELS`) on 429s.
-  If everything is throttled at once, wait ~60s and retry.
-- **Firestore test mode expires (~30 days).** Before then, add proper security rules
-  so each user can only read their own `sessions`/`evaluations`.
-- Backend base URLs are configurable in `frontend/.env`
-  (`VITE_API_BASE`, `VITE_WS_BASE`) — default `127.0.0.1:8000`.
+## 📌 Notes
 
-## Project layout
+- Gemini free-tier limits can trigger model fallbacks. If all models are throttled, wait a bit and retry.
+- Firestore test mode expires, so production should use proper security rules for per-user access.
+- Backend base URLs are configurable through `VITE_API_BASE` and `VITE_WS_BASE`.
+- The frontend `.gitignore` already excludes `*.local`, so `frontend/.env.local` is the safest place for local web config.
 
-```
+## 🧱 Project Layout
+
+```text
 app/            FastAPI backend
   agents/       Gemini agents (parser, assessor, interviewer, coach)
   api/v1/       REST + WebSocket endpoints
   core/         config, firebase, db, security
+  services/     Azure speech and search integrations
 frontend/       React + Vite + Tailwind app
-requirements.txt
+scripts/        Utility scripts for evals, latency, and vector DB seeding
 ```
