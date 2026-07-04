@@ -5,7 +5,7 @@ import {
   createUserWithEmailAndPassword,
   signOut,
 } from "firebase/auth";
-import { auth } from "../firebase";
+import { auth, isFirebaseConfigured } from "../firebase";
 
 const AuthContext = createContext(null);
 
@@ -15,6 +15,12 @@ export function AuthProvider({ children }) {
 
   // Subscribe to Firebase auth state once on mount.
   useEffect(() => {
+    if (!isFirebaseConfigured || !auth) {
+      setCurrentUser(null);
+      setLoading(false);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       setLoading(false);
@@ -23,13 +29,35 @@ export function AuthProvider({ children }) {
   }, []);
 
   // --- Auth actions ---
-  const signIn = (email, password) =>
-    signInWithEmailAndPassword(auth, email, password);
+  const requireAuth = () => {
+    if (!auth) throw new Error("Firebase auth is not initialized.");
+    return auth;
+  };
 
-  const signUp = (email, password) =>
-    createUserWithEmailAndPassword(auth, email, password);
+  const signIn = async (email, password) => {
+    const credential = await signInWithEmailAndPassword(
+      requireAuth(),
+      email,
+      password
+    );
+    setCurrentUser(credential.user);
+    return credential;
+  };
 
-  const logout = () => signOut(auth);
+  const signUp = async (email, password) => {
+    const credential = await createUserWithEmailAndPassword(
+      requireAuth(),
+      email,
+      password
+    );
+    setCurrentUser(credential.user);
+    return credential;
+  };
+
+  const logout = async () => {
+    await signOut(requireAuth());
+    setCurrentUser(null);
+  };
 
   /**
    * Retrieve the active user's Firebase JWT.

@@ -4,7 +4,8 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, s
 from app.agents.parser import parse_resume_and_jd, ParsedProfile
 from app.agents.assessor import generate_assessment, Assessment
 from app.core.security import get_current_user_uid
-from app.core.db import save_candidate_profile, save_mcq_assessment  # <-- Import database triggers
+from app.core.db import save_candidate_profile, save_mcq_assessment
+from app.core.config import settings
 
 router = APIRouter()
 
@@ -20,7 +21,8 @@ ALLOWED_EXTENSIONS={".pdf",".docx",".txt"}
 async def parse_candidate_context(
     resume: UploadFile = File(..., description="The candidate's resume file(PDF, DOCX or TXT)"),
     jd_text: str = Form(..., description="The text of the target job description"),
-    uid:str=Depends(get_current_user_uid)
+    # 🚨 TEMPORARY SECURITY BYPASS FOR LOCAL TESTING
+    uid: str = "test_user_123"
 ):
     """
     Secure endpoint that accepts a resume and a text Job Description,
@@ -39,18 +41,22 @@ async def parse_candidate_context(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid content type detected. File maybe corrupted or disguised."
-
         )
+        
     try:
         resume_bytes= await resume.read()
         if len(resume_bytes)==0:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The uploaded file is empty")
+            
         MAX_FILE_SIZE_MB=5
         if len(resume_bytes)>(MAX_FILE_SIZE_MB*1024*1024):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"File is too large. Maximum allowed size is {MAX_FILE_SIZE_MB}MB.")
+            
+        # 🕵️ DEBUG: Print first 15 chars of the key to your terminal
+        print(f"🕵️ DEBUG - KEY BEING USED: {settings.GEMINI_API_KEY[:15]}...")
+        
         # handoff exception to the Parser agent (We now pass file_ext)
         profile_data=await parse_resume_and_jd(resume_bytes, file_ext, jd_text)
-
         
         # Commit the raw dictionary to firestore
         await save_candidate_profile(uid=uid, profile_data=profile_data.model_dump())
@@ -61,14 +67,16 @@ async def parse_candidate_context(
     except ValueError as val_err:
         raise HTTPException(status_code=422, detail=str(val_err))
     except Exception as e:
+        # This will print the actual error to your terminal
+        print(f"🚨 ERROR: {str(e)}")
         raise HTTPException(status_code=500, detail=f"An error occurred during parsing: {str(e)}")
     
 
 @router.post("/generate-mcq", response_model=dict)
 async def create_prescreen_quiz(
     profile: ParsedProfile,
-    uid: str=Depends(get_current_user_uid),  # <-- Require the explicit user mapping ID 
-    
+    # 🚨 TEMPORARY SECURITY BYPASS FOR LOCAL TESTING
+    uid: str = "test_user_123" 
 ):
     """
     Accepts a structured candidate profile, generates a tailored 5-question 

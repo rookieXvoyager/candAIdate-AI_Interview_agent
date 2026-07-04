@@ -2,13 +2,17 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Lock, AlertTriangle, Check } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { isFirebaseConfigured } from "../firebase";
+import { firebaseInitError, isFirebaseConfigured } from "../firebase";
 import Spinner from "../components/Spinner";
 import { LogoMark } from "../components/Logo";
 
 // Maps raw Firebase error codes to friendly copy.
 function friendlyError(code) {
   switch (code) {
+    case "auth/missing-email":
+      return "Please enter your email address.";
+    case "auth/missing-password":
+      return "Please enter your password.";
     case "auth/invalid-credential":
     case "auth/wrong-password":
     case "auth/user-not-found":
@@ -28,7 +32,23 @@ function friendlyError(code) {
     case "auth/network-request-failed":
       return "Network error reaching Firebase. Check your connection.";
     default:
-      return "Something went wrong. Please try again.";
+      return "Authentication failed. Please check your Firebase setup and try again.";
+  }
+}
+
+function firebaseSetupMessage() {
+  if (!firebaseInitError) {
+    return "Paste your web app keys into frontend/.env and restart the dev server.";
+  }
+
+  switch (firebaseInitError.code) {
+    case "auth/invalid-api-key":
+    case "auth/api-key-not-valid":
+      return "Firebase rejected the API key at runtime. Copy the Web app API key from the same Firebase project as this app, then restart Vite.";
+    case "auth/configuration-not-found":
+      return "Firebase Auth is not enabled for this project or the app config does not match the project. Check the Firebase console and your frontend/.env values.";
+    default:
+      return `Firebase initialization failed (${firebaseInitError.code || "unknown error"}). Check frontend/.env and restart the dev server.`;
   }
 }
 
@@ -53,15 +73,26 @@ export default function Login() {
     e.preventDefault();
     setError("");
     setBusy(true);
+
+    const form = new FormData(e.currentTarget);
+    const formEmail = String(form.get("email") || "").trim();
+    const formPassword = String(form.get("password") || "");
+
+    // Keep state aligned with what the browser actually submitted.
+    setEmail(formEmail);
+    setPassword(formPassword);
+
     try {
       if (isSignup) {
-        await signUp(email, password);
+        await signUp(formEmail, formPassword);
       } else {
-        await signIn(email, password);
+        await signIn(formEmail, formPassword);
       }
       navigate("/dashboard");
     } catch (err) {
-      setError(friendlyError(err.code));
+      const code = err?.code || "";
+      const message = friendlyError(code);
+      setError(code ? `${message} (${code})` : message);
     } finally {
       setBusy(false);
     }
@@ -148,13 +179,12 @@ export default function Login() {
                 <p className="flex items-center gap-1.5 font-semibold">
                   <AlertTriangle className="h-4 w-4" /> Firebase not configured
                 </p>
-                <p className="mt-1 text-amber-200/80">
-                  Paste your web app keys into{" "}
-                  <code className="rounded bg-black/40 px-1 py-0.5 text-amber-100">
-                    frontend/.env
-                  </code>{" "}
-                  and restart the dev server.
-                </p>
+                <p className="mt-1 text-amber-200/80">{firebaseSetupMessage()}</p>
+                {firebaseInitError && (
+                  <p className="mt-2 text-xs text-amber-100/70">
+                    Runtime error: {firebaseInitError.code || "unknown"}
+                  </p>
+                )}
               </div>
             )}
 
@@ -190,15 +220,17 @@ export default function Login() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4">
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-300">
                   Email
                 </label>
                 <input
+                  name="email"
                   type="email"
                   required
-                  autoComplete="email"
+                  autoComplete="off"
+                  spellCheck={false}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
@@ -210,9 +242,10 @@ export default function Login() {
                   Password
                 </label>
                 <input
+                  name="password"
                   type="password"
                   required
-                  autoComplete={isSignup ? "new-password" : "current-password"}
+                  autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"

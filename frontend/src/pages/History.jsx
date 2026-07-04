@@ -9,7 +9,7 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { Inbox } from "lucide-react";
-import { db } from "../firebase";
+import { db, isFirebaseConfigured } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import AppShell from "../components/AppShell";
 import Spinner from "../components/Spinner";
@@ -48,7 +48,10 @@ export default function History() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || !isFirebaseConfigured || !db) {
+      setLoading(false);
+      return;
+    }
     let active = true;
 
     (async () => {

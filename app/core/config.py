@@ -8,14 +8,14 @@ class Settings(BaseSettings):
     # Required keys (App will throw an error on startup if this is missing from .env)
     GEMINI_API_KEY: str
 
-    # Primary model used by all agents. Override in .env.
+    # Primary model used by all agents. 
+    # Upgraded to 2.5-flash to prevent 404 deprecation errors.
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
     # Comma-separated fallback models tried (in order) when the primary is
-    # rate-limited (HTTP 429). Free-tier quota is per-model and fluctuates,
-    # so spreading across models keeps the app working.
+    # rate-limited (HTTP 429).
     GEMINI_FALLBACK_MODELS: str = (
-        "gemini-2.5-flash-lite,gemini-2.0-flash,gemini-2.0-flash-lite"
+        "gemini-2.5-flash-lite,gemini-2.0-flash"
     )
 
     # Optional keys (Set to None by default so the app doesn't crash if we haven't configured them yet)

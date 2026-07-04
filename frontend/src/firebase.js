@@ -13,14 +13,28 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-// True only when real values have been pasted into .env (not the placeholders).
-export const isFirebaseConfigured =
+const hasFirebaseEnv =
   !!firebaseConfig.apiKey &&
   firebaseConfig.apiKey !== "your-api-key" &&
   !!firebaseConfig.projectId &&
   firebaseConfig.projectId !== "your-project-id";
 
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+export let firebaseInitError = null;
+export let auth = null;
+export let db = null;
+let app = null;
+
+if (hasFirebaseEnv) {
+  try {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+  } catch (error) {
+    firebaseInitError = error;
+    console.error("Firebase initialization failed:", error);
+  }
+}
+
+// True only when real values are present and Firebase auth initialized cleanly.
+export const isFirebaseConfigured = hasFirebaseEnv && !firebaseInitError && !!auth;
 export default app;

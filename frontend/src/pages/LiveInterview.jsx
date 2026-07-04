@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bot } from "lucide-react";
+import { Bot, Mic, Square } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useInterview } from "../context/InterviewContext";
 import { WS_BASE } from "../lib/api";
@@ -13,14 +13,38 @@ export default function LiveInterview() {
 
   const wsRef = useRef(null);
   const scrollRef = useRef(null);
-  const endingRef = useRef(false); // distinguishes intentional close from drops
+  const endingRef = useRef(false);
+  const recognitionRef = useRef(null); // Reference for Web Speech API
 
-  const [messages, setMessages] = useState([]); // { speaker, text }
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-  const [status, setStatus] = useState("connecting"); // connecting | open | closed | error
+  const [status, setStatus] = useState("connecting");
   const [aiThinking, setAiThinking] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
 
-  // --- Open the secure WebSocket once we have a session + token ---
+  // Initialize Speech Recognition
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+      recognitionRef.current.lang = 'en-US';
+
+      recognitionRef.current.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript) {
+          // Send text directly to backend (Bypassing Azure C++ Drivers)
+          wsRef.current?.send(JSON.stringify({ type: "text", text: transcript }));
+          setMessages((prev) => [...prev, { speaker: "Candidate", text: transcript }]);
+          setAiThinking(true);
+        }
+      };
+
+      recognitionRef.current.onend = () => setIsRecording(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!sessionId) {
       navigate("/dashboard", { replace: true });
@@ -35,37 +59,43 @@ export default function LiveInterview() {
         const token = await getToken();
         if (!active) return;
 
-        // Browsers can't set WS headers, so the Firebase JWT rides as a query param.
         socket = new WebSocket(
           `${WS_BASE}/api/v1/interview/stream/${sessionId}?token=${token}`
         );
         wsRef.current = socket;
         setAiThinking(true);
 
-        socket.onopen = () => setStatus("open");
+        socket.onopen = () => {
+          if (wsRef.current === socket) setStatus("open");
+        };
 
         socket.onmessage = (event) => {
-          // Heartbeat: reply with pong and do NOT render it.
+          if (wsRef.current !== socket) return;
+          
           try {
             const parsed = JSON.parse(event.data);
-            if (parsed?.type === "ping") {
+            if (parsed.type === "ping") {
               socket.send(JSON.stringify({ type: "pong" }));
               return;
             }
-          } catch {
-            // Not JSON → it's a real interviewer message (plain text).
+
+            if (parsed.type === "ai_response") {
+              setAiThinking(false);
+              setMessages((prev) => [...prev, { speaker: "Interviewer", text: parsed.text }]);
+              
+              if (parsed.audio_base64) {
+                const audio = new Audio("data:audio/wav;base64," + parsed.audio_base64);
+                audio.play().catch(e => console.error("Audio playback failed:", e));
+              }
+              return;
+            }
+          } catch (e) {
+            console.error("WS parse error", e);
           }
-          setAiThinking(false);
-          setMessages((prev) => [
-            ...prev,
-            { speaker: "Interviewer", text: event.data },
-          ]);
         };
 
-        socket.onerror = () => setStatus("error");
-
         socket.onclose = () => {
-          setStatus(endingRef.current ? "closed" : "error");
+          if (wsRef.current === socket) setStatus(endingRef.current ? "closed" : "error");
         };
       } catch {
         if (active) setStatus("error");
@@ -74,39 +104,40 @@ export default function LiveInterview() {
 
     return () => {
       active = false;
-      endingRef.current = true;
-      socket?.close();
+      if (socket) socket.close();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, getToken, navigate]);
 
-  // Auto-scroll to the newest message.
   useEffect(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
-    });
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, aiThinking]);
 
   const sendMessage = () => {
     const text = input.trim();
     if (!text || status !== "open") return;
-    wsRef.current?.send(text);
+    wsRef.current?.send(JSON.stringify({ type: "text", text }));
     setMessages((prev) => [...prev, { speaker: "Candidate", text }]);
     setInput("");
     setAiThinking(true);
   };
 
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
+  const startRecording = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.start();
+      setIsRecording(true);
+    }
+  };
+
+  const stopRecording = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsRecording(false);
     }
   };
 
   const endInterview = () => {
     endingRef.current = true;
-    wsRef.current?.close(1000, "Interview ended by candidate");
+    wsRef.current?.close(1000, "Interview ended");
     navigate("/feedback");
   };
 
@@ -118,66 +149,30 @@ export default function LiveInterview() {
   }[status];
 
   return (
-    <AppShell step={4}>
-      <div className="mx-auto flex h-[calc(100dvh-16rem)] max-w-3xl flex-col sm:h-[calc(100dvh-13rem)]">
-        {/* Header */}
-        <div className="card mb-4 flex items-center justify-between px-5 py-3">
+    <AppShell>
+      <div className="mx-auto flex h-[calc(100vh-6rem)] max-w-4xl flex-col">
+        <div className="flex items-center justify-between rounded-t-2xl border border-navy-700 bg-navy-800 p-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-600/20">
-              <Bot className="h-5 w-5 text-brand-400" />
-            </div>
-            <div>
-              <p className="font-semibold text-white">AI Interviewer</p>
-              <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                <span
-                  className={`h-2 w-2 rounded-full ${statusMeta.color} ${
-                    status === "open" ? "animate-pulse" : ""
-                  }`}
-                />
-                {statusMeta.label}
-              </div>
+            <Bot className="h-6 w-6 text-brand-400" />
+            <h2 className="text-lg font-semibold text-white">AI Interviewer</h2>
+            <div className="ml-4 flex items-center gap-2 rounded-full border border-navy-700 bg-navy-900 px-3 py-1 text-xs">
+              <span className={`h-2 w-2 rounded-full ${statusMeta.color} ${status === "open" ? "animate-pulse" : ""}`} />
+              <span className="text-slate-300">{statusMeta.label}</span>
             </div>
           </div>
-          <button
-            onClick={endInterview}
-            className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-300 transition hover:bg-rose-500/20"
-          >
-            End & Get Feedback
+          <button onClick={endInterview} className="flex items-center gap-2 rounded-lg bg-rose-500/10 px-4 py-2 text-sm text-rose-400 transition-colors hover:bg-rose-500/20">
+            <Square className="h-4 w-4" /> End & Get Feedback
           </button>
         </div>
 
-        {/* Chat window */}
-        <div
-          ref={scrollRef}
-          className="card scroll-thin flex-1 space-y-4 overflow-y-auto p-5"
-        >
-          {messages.length === 0 && status === "open" && !aiThinking && (
-            <p className="mt-10 text-center text-sm text-slate-500">
-              Waiting for the interviewer to begin…
-            </p>
-          )}
-
-          {messages.map((m, i) => {
-            const mine = m.speaker === "Candidate";
-            return (
-              <div
-                key={i}
-                className={`flex ${mine ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={[
-                    "max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
-                    mine
-                      ? "rounded-br-sm bg-brand-600 text-white"
-                      : "rounded-bl-sm border border-navy-700 bg-navy-800 text-slate-100",
-                  ].join(" ")}
-                >
-                  {m.text}
-                </div>
+        <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto border-x border-navy-700 bg-navy-900/50 p-5 scroll-smooth">
+          {messages.map((m, i) => (
+            <div key={i} className={`flex ${m.speaker === "Candidate" ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${m.speaker === "Candidate" ? "rounded-br-sm bg-brand-600 text-white" : "rounded-bl-sm border border-navy-700 bg-navy-800 text-slate-100"}`}>
+                {m.text}
               </div>
-            );
-          })}
-
+            </div>
+          ))}
           {aiThinking && (
             <div className="flex justify-start">
               <div className="flex gap-1.5 rounded-2xl rounded-bl-sm border border-navy-700 bg-navy-800 px-4 py-3">
@@ -189,28 +184,22 @@ export default function LiveInterview() {
           )}
         </div>
 
-        {/* Composer */}
-        <div className="card mt-4 flex items-end gap-3 p-3">
+        <div className="flex items-end gap-3 rounded-b-2xl border border-navy-700 bg-navy-800 p-4">
+          <button
+            onMouseDown={startRecording}
+            onMouseUp={stopRecording}
+            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full border transition-all ${isRecording ? "animate-pulse border-rose-400 bg-rose-500 text-white shadow-[0_0_15px_rgba(244,63,94,0.5)]" : "border-navy-600 bg-navy-900 text-slate-300 hover:bg-navy-700"}`}
+          >
+            <Mic className="h-5 w-5" />
+          </button>
           <textarea
             rows={1}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={status !== "open"}
-            placeholder={
-              status === "open"
-                ? "Type your answer… (Enter to send, Shift+Enter for newline)"
-                : "Connection not active"
-            }
-            className="max-h-32 flex-1 resize-none bg-transparent px-3 py-2 text-slate-100 placeholder-slate-500 focus:outline-none"
+            className="max-h-32 flex-1 resize-none rounded-xl border border-navy-600 bg-navy-900 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:border-brand-500 focus:outline-none"
+            placeholder="Type or hold mic to answer..."
           />
-          <button
-            onClick={sendMessage}
-            disabled={status !== "open" || !input.trim()}
-            className="btn-primary px-5 py-2.5"
-          >
-            Send
-          </button>
+          <button onClick={sendMessage} className="flex h-12 items-center justify-center rounded-xl bg-brand-600 px-6 text-sm text-white">Send</button>
         </div>
       </div>
     </AppShell>
