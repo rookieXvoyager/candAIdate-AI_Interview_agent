@@ -1,4 +1,4 @@
-version: "3.8"
+version: '3.8'
 
 services:
   backend:
@@ -31,6 +31,7 @@ services:
         VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID}
     container_name: candaidate-frontend
     restart: unless-stopped
+    # IMPORTANT: 'expose' 80, but do NOT 'ports' to host. Caddy handles host ports.
     expose:
       - "80"
     depends_on:
@@ -39,14 +40,14 @@ services:
       - candaidate-net
 
   caddy:
-    image: caddy:2.8-alpine
+    image: caddy:latest
     container_name: candaidate-caddy
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "80:80"   # Let's Encrypt needs this for the HTTP-01 challenge
       - "443:443"
     volumes:
-      - ./app/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

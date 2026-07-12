@@ -10,12 +10,12 @@ class Settings(BaseSettings):
 
     # Primary model used by all agents. 
     # Upgraded to 2.5-flash to prevent 404 deprecation errors.
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-3.5-flash"
 
     # Comma-separated fallback models tried (in order) when the primary is
     # rate-limited (HTTP 429).
     GEMINI_FALLBACK_MODELS: str = (
-        "gemini-2.5-flash-lite,gemini-2.0-flash"
+        "gemini-3.1-flash-lite"
     )
 
     # Optional keys (Set to None by default so the app doesn't crash if we haven't configured them yet)

@@ -31,7 +31,7 @@ class InterviewerAgent:
         self.history = [{"role": "system", "content": self.system_prompt}]
         self.using_groq = False # Flag to lock into Groq if Gemini fails permanently
         
-        self._models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"]
+        self._models = [ "gemini-3.5-flash", "gemini-3.1-flash-lite"]
         self._model_idx = 0
         self.chat_session = self._new_session()
 

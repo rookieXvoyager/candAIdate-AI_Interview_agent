@@ -1,0 +1,14 @@
+candaidate.app, www.candaidate.app {
+    # 1. API Route: Forward to Backend
+    route /api/* {
+        reverse_proxy backend:8000
+    }
+
+    # 2. Frontend Route: Forward to Nginx (Frontend)
+    route /* {
+        reverse_proxy frontend:80
+    }
+
+    # Compression
+    encode zstd gzip
+}
