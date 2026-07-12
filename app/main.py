@@ -17,10 +17,15 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configure CORS
+# 🔒 Configure CORS for Production
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",       # Local React development
+        "http://127.0.0.1:5173",       # Local React development
+        "https://candaidate.app",      # Production Domain
+        "https://www.candaidate.app"   # Production Domain (www)
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,11 +42,9 @@ async def global_exception_handler(request: Request, exc: Exception):
     Safely handles exceptions, explicitly avoiding use of 'request.method' 
     which causes crashes on WebSocket disconnects.
     """
-    # 1. LOGGING (Using getattr to safely get method if it exists)
     method = getattr(request, 'method', 'WS')
     print(f"🚨 CRITICAL ERROR on {method} {request.url.path}: {repr(exc)}")
     
-    # 2. RETURN JSON for HTTP, skip for WebSockets
     if request.scope.get("type") == "websocket":
         return 
         

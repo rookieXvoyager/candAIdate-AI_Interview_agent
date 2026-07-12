@@ -1,0 +1,22 @@
+# 🚨 SECRETS (Never bake these into public images)
+.env
+serviceAccountKey.json
+
+# Node & Frontend
+node_modules/
+npm-debug.log
+dist/
+build/
+.env.local
+
+# Python & Backend
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.pytest_cache/
+
+# OS & Git
+.DS_Store
+.git/

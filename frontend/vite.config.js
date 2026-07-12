@@ -1,11 +1,20 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
-// Dev server runs on 5173 to match the FastAPI CORS allow-list.
 export default defineConfig({
   plugins: [react()],
-  server: {
-    port: 5173,
-    strictPort: true,
-  },
+  build: {
+    // Increase the chunk size limit to reduce warnings
+    chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      output: {
+        // Automatically split large vendor libraries into a separate chunk
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            return 'vendor';
+          }
+        }
+      }
+    }
+  }
 });

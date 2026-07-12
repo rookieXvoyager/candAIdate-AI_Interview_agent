@@ -1,0 +1,19 @@
+candaidate.app, www.candaidate.app {
+# 1. Route API traffic to the Python Backend
+route /api/* {
+reverse_proxy backend:8000 {
+# Helps prevent 502 errors during container restarts
+lb_try_duration 5s
+}
+}
+
+# 2. Route all other traffic to the React Frontend
+route /* {
+    reverse_proxy frontend:80
+}
+
+# 3. Enable compression (zstd is faster/smaller than gzip)
+encode zstd gzip
+
+
+}

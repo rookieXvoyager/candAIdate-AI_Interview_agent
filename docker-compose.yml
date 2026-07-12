@@ -1,0 +1,64 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: candaidate-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/serviceAccountKey.json
+    volumes:
+      - ./serviceAccountKey.json:/app/serviceAccountKey.json:ro
+    expose:
+      - "8000"
+    networks:
+      - candaidate-net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY}
+        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN}
+        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID}
+        VITE_FIREBASE_STORAGE_BUCKET: ${VITE_FIREBASE_STORAGE_BUCKET}
+        VITE_FIREBASE_MESSAGING_SENDER_ID: ${VITE_FIREBASE_MESSAGING_SENDER_ID}
+        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID}
+    container_name: candaidate-frontend
+    restart: unless-stopped
+    expose:
+      - "80"
+    depends_on:
+      - backend
+    networks:
+      - candaidate-net
+
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: candaidate-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./app/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - candaidate-net
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  candaidate-net:
+    driver: bridge

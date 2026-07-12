@@ -3,6 +3,7 @@ dist
 dist-ssr
 *.local
 .env
+serviceAccountKey.json
 
 # Landing page kept local, excluded from GitHub for now
 src/pages/Landing.jsx

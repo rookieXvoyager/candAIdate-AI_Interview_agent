@@ -9,31 +9,30 @@ from app.core.config import settings
 
 router = APIRouter()
 
-ALLOWED_MIME_TYPES={
+ALLOWED_MIME_TYPES = {
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "text/plain"
 }
-
-ALLOWED_EXTENSIONS={".pdf",".docx",".txt"}
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
 
 @router.post("/parse", response_model=dict)
 async def parse_candidate_context(
     resume: UploadFile = File(..., description="The candidate's resume file(PDF, DOCX or TXT)"),
     jd_text: str = Form(..., description="The text of the target job description"),
-    # 🚨 TEMPORARY SECURITY BYPASS FOR LOCAL TESTING
-    uid: str = "test_user_123"
+    # 🔒 SECURE: Re-enabled proper Firebase JWT validation
+    uid: str = Depends(get_current_user_uid)
 ):
     """
     Secure endpoint that accepts a resume and a text Job Description,
     processes them via the Gemini Parser Agent, and commits the result to Firestore.
     """
     # Validating the file extension
-    file_ext=os.path.splitext(resume.filename)[1].lower()
+    file_ext = os.path.splitext(resume.filename)[1].lower()
     if file_ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid file type '{file_ext}'. Only PDF, DOCX and TXT files are supported"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid file type '{file_ext}'. Only PDF, DOCX and TXT files are supported"
         )
     
     # Validating MIME content type
@@ -44,26 +43,25 @@ async def parse_candidate_context(
         )
         
     try:
-        resume_bytes= await resume.read()
-        if len(resume_bytes)==0:
+        resume_bytes = await resume.read()
+        if len(resume_bytes) == 0:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The uploaded file is empty")
             
-        MAX_FILE_SIZE_MB=5
-        if len(resume_bytes)>(MAX_FILE_SIZE_MB*1024*1024):
+        MAX_FILE_SIZE_MB = 5
+        if len(resume_bytes) > (MAX_FILE_SIZE_MB * 1024 * 1024):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"File is too large. Maximum allowed size is {MAX_FILE_SIZE_MB}MB.")
             
-        # 🕵️ DEBUG: Print first 15 chars of the key to your terminal
-        print(f"🕵️ DEBUG - KEY BEING USED: {settings.GEMINI_API_KEY[:15]}...")
-        
-        # handoff exception to the Parser agent (We now pass file_ext)
-        profile_data=await parse_resume_and_jd(resume_bytes, file_ext, jd_text)
+        # Handoff exception to the Parser agent (We now pass file_ext)
+        profile_data = await parse_resume_and_jd(resume_bytes, file_ext, jd_text)
         
         # Commit the raw dictionary to firestore
         await save_candidate_profile(uid=uid, profile_data=profile_data.model_dump())
+        
         return {
-            "uid":uid,
-            "profile":profile_data
+            "uid": uid, 
+            "profile": profile_data
         }   
+        
     except ValueError as val_err:
         raise HTTPException(status_code=422, detail=str(val_err))
     except Exception as e:
@@ -75,8 +73,8 @@ async def parse_candidate_context(
 @router.post("/generate-mcq", response_model=dict)
 async def create_prescreen_quiz(
     profile: ParsedProfile,
-    # 🚨 TEMPORARY SECURITY BYPASS FOR LOCAL TESTING
-    uid: str = "test_user_123" 
+    # 🔒 SECURE: Re-enabled proper Firebase JWT validation
+    uid: str = Depends(get_current_user_uid) 
 ):
     """
     Accepts a structured candidate profile, generates a tailored 5-question 
@@ -98,7 +96,7 @@ async def create_prescreen_quiz(
         )
         
         return {
-            "session_id": session_id,
+            "session_id": session_id, 
             "assessment": assessment_data
         }
         
