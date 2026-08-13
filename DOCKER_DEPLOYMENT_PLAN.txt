@@ -1,0 +1,105 @@
+Docker Deployment Plan for candAIdate
+
+Purpose
+- This document is the deployment handoff for running candAIdate on a single Azure VM with Docker.
+- The target public domain is `candaidate.app` with `www.candaidate.app` as either an alias or redirect.
+- The goal is a containerized production setup that keeps secrets out of images and supports REST plus WebSocket traffic on one origin.
+
+Current repo facts
+- The deployable backend Dockerfile is `Dockerfile.backend`.
+- The deployable frontend Dockerfile is `Dockerfile.frontend`.
+- The root `Dockerfile` is only a placeholder and should not be treated as buildable.
+- `docker-compose.yml` exists and now matches the backend, frontend, and reverse-proxy layout.
+- The backend is a FastAPI app started from `app/main.py`.
+- The active WebSocket interview route is `app/api/v1/stream.py` and is mounted by `app/main.py`.
+- A legacy interview implementation exists in `app/api/v1/interview.py`, but it is not the mounted production route.
+- The frontend is a Vite app under `frontend/` and already reads deployment URLs from `VITE_API_BASE` and `VITE_WS_BASE`.
+- The frontend currently builds into `frontend/dist/`, which is present in the workspace.
+
+Deployment architecture
+- Use one Azure VM running Docker Engine and Docker Compose.
+- Run three containers:
+  - backend: FastAPI + Uvicorn on port 8000.
+  - frontend: Nginx serving the built Vite app on port 80 inside the container.
+  - edge proxy: Caddy or Nginx on the host-facing ports 80 and 443.
+- Route all browser traffic through `https://candaidate.app`.
+- Proxy `/api/*`, `/health`, and WebSocket traffic to the backend container.
+- Serve the SPA from the frontend container, or have the edge proxy route `/` to the frontend and `/api` to the backend.
+- Prefer one public origin so the browser can use same-origin REST and WebSocket URLs.
+
+Security and domain requirements
+- Add `candaidate.app` and `www.candaidate.app` to Firebase Authentication authorized domains.
+- Keep the Firebase service account key on the VM as a mounted secret or host-protected file.
+- Do not bake `serviceAccountKey.json` into any image.
+- Store Gemini, Firebase, and any Azure settings as runtime environment variables.
+- Keep Firestore rules in place before opening the site publicly.
+- Use HTTPS only in production and redirect HTTP to HTTPS.
+
+Implementation plan
+
+1. Fix the deployment blockers
+- Remove the hardcoded Gemini key from `app/agents/parser.py` and use `settings.GEMINI_API_KEY`.
+- Remove the temporary UID bypass in `app/api/v1/setup.py` and use the verified Firebase identity.
+- Repair `app/core/security.py` so Firebase token verification is reliable.
+- Decide whether `app/api/v1/stream.py` remains the sole live interview route and archive the duplicate path if needed.
+
+2. Make the containers production-ready
+- Keep the backend image based on a slim Python runtime.
+- Keep the frontend as a multi-stage build with the final stage served by Nginx.
+- Make sure the frontend image serves the SPA fallback correctly for React Router.
+- Expose only the internal ports needed by Docker network communication.
+- Externalize all runtime configuration with env vars and mounted secrets.
+
+3. Define VM orchestration
+- Use Docker Compose on the VM for container lifecycle management.
+- Mount the Firebase service account file read-only into the backend container.
+- Bind the edge proxy to ports 80 and 443 on the host.
+- Keep backend and frontend on a private Docker network.
+- Add restart policies so the stack comes back after VM reboot.
+
+4. Configure the domain
+- Point the DNS A record for `candaidate.app` to the VM public IP.
+- Point `www.candaidate.app` to the same VM or redirect it to the apex domain.
+- Issue TLS certificates through the edge proxy.
+- Verify the production origin works with the Firebase auth flow and WebSocket connections.
+
+5. Validate locally before production
+- Build both images locally.
+- Start the stack with Docker Compose.
+- Verify the backend health endpoint.
+- Verify login, token exchange, resume upload, quiz generation, interview, and feedback.
+- Verify WebSocket connectivity through the proxy path.
+- Verify Firestore reads and writes with the mounted service account.
+
+6. Deploy to Azure VM
+- Provision the VM size and disk required for the containers.
+- Install Docker Engine and Docker Compose.
+- Copy or mount the runtime secrets.
+- Start the stack.
+- Confirm `https://candaidate.app` loads the app and `/health` returns healthy.
+
+7. Add operations and rollback
+- Add structured logging for auth failures, model errors, and WebSocket disconnects.
+- Add a smoke-test script for the full funnel.
+- Keep the previous image tags available for rollback.
+- Add a simple upgrade procedure that updates images, restarts the stack, and reruns the smoke test.
+
+Recommended order of work
+1. Fix auth, secret handling, and the duplicate interview route.
+2. Make the backend and frontend images production-ready.
+3. Rewrite `docker-compose.yml` for the Azure VM stack.
+4. Configure DNS and TLS for `candaidate.app`.
+5. Validate locally with Docker.
+6. Deploy to the VM.
+7. Add smoke tests and rollback steps.
+
+Practical notes
+- The frontend build already succeeds in the current workspace.
+- The frontend code expects same-origin deployment support through `API_BASE` and `WS_BASE`.
+- The current workspace contains generated frontend output in `frontend/dist/`, but production deployments should rebuild it from source.
+- Keep `serviceAccountKey.json` out of git and out of image layers.
+
+Short handoff summary
+- The right production shape is a single Azure VM, Docker Compose, HTTPS on `candaidate.app`, and one reverse-proxy entrypoint.
+- The immediate blockers remain auth cleanup, secret handling, and stale orchestration wiring.
+- Validate locally first, then attach DNS and TLS, then go live.

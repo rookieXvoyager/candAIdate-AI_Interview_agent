@@ -1,0 +1,124 @@
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------
+  # EXISTING CORE SERVICES
+  # ---------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: candaidate-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/serviceAccountKey.json
+    volumes:
+      - ./serviceAccountKey.json:/app/serviceAccountKey.json:ro
+    expose:
+      - "8000"
+    depends_on:
+      - judge0-server
+    networks:
+      - candaidate-net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY}
+        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN}
+        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID}
+        VITE_FIREBASE_STORAGE_BUCKET: ${VITE_FIREBASE_STORAGE_BUCKET}
+        VITE_FIREBASE_MESSAGING_SENDER_ID: ${VITE_FIREBASE_MESSAGING_SENDER_ID}
+        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID}
+    container_name: candaidate-frontend
+    restart: unless-stopped
+    expose:
+      - "80"
+    depends_on:
+      - backend
+    networks:
+      - candaidate-net
+
+  caddy:
+    image: caddy:latest
+    container_name: candaidate-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"   # Let's Encrypt needs this for the HTTP-01 challenge
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - candaidate-net
+
+  # ---------------------------------------------------------
+  # JUDGE0 CE INFRASTRUCTURE
+  # ---------------------------------------------------------
+  judge0-server:
+    image: judge0/judge0:1.13.1
+    container_name: judge0-server
+    volumes:
+      - ./judge0.conf:/judge0.conf:ro
+    ports:
+      - "2358:2358" # Exposed so you can test it locally via curl
+    privileged: true
+    restart: unless-stopped
+    depends_on:
+      - judge0-db
+      - judge0-redis
+    networks:
+      - candaidate-net
+
+  judge0-workers:
+    image: judge0/judge0:1.13.1
+    container_name: judge0-workers
+    command: ["./scripts/workers"]
+    volumes:
+      - ./judge0.conf:/judge0.conf:ro
+    privileged: true
+    restart: unless-stopped
+    depends_on:
+      - judge0-db
+      - judge0-redis
+    networks:
+      - candaidate-net
+
+  judge0-db:
+    image: postgres:13.0
+    container_name: judge0-db
+    env_file: judge0.conf
+    volumes:
+      - postgres-data:/var/lib/postgresql/data/
+    restart: unless-stopped
+    networks:
+      - candaidate-net
+
+  judge0-redis:
+    image: redis:6.0
+    container_name: judge0-redis
+    command: ["bash", "-c", 'docker-entrypoint.sh --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+    env_file: judge0.conf
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - candaidate-net
+
+volumes:
+  caddy_data:
+  caddy_config:
+  postgres-data:
+  redis-data:
+
+networks:
+  candaidate-net:
+    driver: bridge

@@ -1,87 +1,83 @@
 import os
 import uuid
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, status
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, status, Query
 from app.agents.parser import parse_resume_and_jd, ParsedProfile
 from app.agents.assessor import generate_assessment, Assessment
+# NEW: Import the new agent function we are about to build
+from app.agents.generator import generate_sample_jd 
 from app.core.security import get_current_user_uid
-from app.core.db import save_candidate_profile, save_mcq_assessment  # <-- Import database triggers
+from app.core.db import save_candidate_profile, save_mcq_assessment
+from app.core.config import settings
 
 router = APIRouter()
 
-ALLOWED_MIME_TYPES={
+ALLOWED_MIME_TYPES = {
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "text/plain"
 }
-
-ALLOWED_EXTENSIONS={".pdf",".docx",".txt"}
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
 
 @router.post("/parse", response_model=dict)
 async def parse_candidate_context(
     resume: UploadFile = File(..., description="The candidate's resume file(PDF, DOCX or TXT)"),
     jd_text: str = Form(..., description="The text of the target job description"),
-    uid:str=Depends(get_current_user_uid)
+    uid: str = Depends(get_current_user_uid)
 ):
     """
     Secure endpoint that accepts a resume and a text Job Description,
     processes them via the Gemini Parser Agent, and commits the result to Firestore.
     """
-    # Validating the file extension
-    file_ext=os.path.splitext(resume.filename)[1].lower()
+    file_ext = os.path.splitext(resume.filename)[1].lower()
     if file_ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid file type '{file_ext}'. Only PDF, DOCX and TXT files are supported"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid file type '{file_ext}'. Only PDF, DOCX and TXT files are supported"
         )
     
-    # Validating MIME content type
     if resume.content_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid content type detected. File maybe corrupted or disguised."
-
         )
-    try:
-        resume_bytes= await resume.read()
-        if len(resume_bytes)==0:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The uploaded file is empty")
-        MAX_FILE_SIZE_MB=5
-        if len(resume_bytes)>(MAX_FILE_SIZE_MB*1024*1024):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"File is too large. Maximum allowed size is {MAX_FILE_SIZE_MB}MB.")
-        # handoff exception to the Parser agent (We now pass file_ext)
-        profile_data=await parse_resume_and_jd(resume_bytes, file_ext, jd_text)
-
         
-        # Commit the raw dictionary to firestore
+    try:
+        resume_bytes = await resume.read()
+        if len(resume_bytes) == 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The uploaded file is empty")
+            
+        MAX_FILE_SIZE_MB = 5
+        if len(resume_bytes) > (MAX_FILE_SIZE_MB * 1024 * 1024):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"File is too large. Maximum allowed size is {MAX_FILE_SIZE_MB}MB.")
+            
+        profile_data = await parse_resume_and_jd(resume_bytes, file_ext, jd_text)
         await save_candidate_profile(uid=uid, profile_data=profile_data.model_dump())
+        
         return {
-            "uid":uid,
-            "profile":profile_data
+            "uid": uid, 
+            "profile": profile_data
         }   
+        
     except ValueError as val_err:
         raise HTTPException(status_code=422, detail=str(val_err))
     except Exception as e:
+        print(f"🚨 ERROR: {str(e)}")
         raise HTTPException(status_code=500, detail=f"An error occurred during parsing: {str(e)}")
     
 
 @router.post("/generate-mcq", response_model=dict)
 async def create_prescreen_quiz(
     profile: ParsedProfile,
-    uid: str=Depends(get_current_user_uid),  # <-- Require the explicit user mapping ID 
-    
+    uid: str = Depends(get_current_user_uid) 
 ):
     """
     Accepts a structured candidate profile, generates a tailored 5-question 
     multiple-choice assessment, and creates a pending state session inside Firestore.
     """
     try:
-        # 1. Hand off execution to the Assessor agent
         assessment_data = await generate_assessment(profile)
-        
-        # 2. Mint a unique session token for tracking this individual technical evaluation
         session_id = f"sess_{uuid.uuid4().hex[:8]}"
         
-        # 3. Commit the full schema payload to the /sessions Firestore collection
         await save_mcq_assessment(
             session_id=session_id, 
             uid=uid, 
@@ -90,9 +86,26 @@ async def create_prescreen_quiz(
         )
         
         return {
-            "session_id": session_id,
+            "session_id": session_id, 
             "assessment": assessment_data
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred while generating the assessment: {str(e)}")
+
+# --- NEW ENDPOINT FOR JD GENERATION ---
+@router.get("/sample-jd")
+async def get_sample_jd(
+    role: str = Query(..., description="Target job title"),
+    experience: str = Query("Mid-Level", description="Experience level (Entry, Mid, Senior, etc)"),
+    uid: str = Depends(get_current_user_uid) 
+):
+    """
+    Generates a realistic mock job description based on a role title and experience level.
+    """
+    try:
+        jd_text = await generate_sample_jd(role, experience)
+        return {"jd_text": jd_text}
+    except Exception as e:
+        print(f"🚨 JD Generation Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate sample job description")
