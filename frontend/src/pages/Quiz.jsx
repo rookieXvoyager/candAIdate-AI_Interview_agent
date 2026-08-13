@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Target, BookOpen } from "lucide-react";
+import { Target, BookOpen, Clock } from "lucide-react";
 import { useInterview } from "../context/InterviewContext";
 import AppShell from "../components/AppShell";
+
+const QUIZ_MINUTES = 10;
 
 export default function Quiz() {
   const { assessment, setQuizScore } = useInterview();
@@ -15,11 +17,28 @@ export default function Quiz() {
 
   const [answers, setAnswers] = useState({}); // { [index]: "A" }
   const [submitted, setSubmitted] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(QUIZ_MINUTES * 60);
 
   // If state was lost (hard refresh), send the user back to the start.
   useEffect(() => {
     if (!assessment) navigate("/dashboard", { replace: true });
   }, [assessment, navigate]);
+
+  // --- Countdown Timer Logic ---
+  useEffect(() => {
+    if (submitted || !assessment) return;
+    
+    if (secondsLeft <= 0) {
+      handleSubmit(); // Auto-submit when time is up
+      return;
+    }
+    
+    const timer = setInterval(() => {
+      setSecondsLeft((prev) => prev - 1);
+    }, 1000);
+    
+    return () => clearInterval(timer);
+  }, [secondsLeft, submitted, assessment]);
 
   if (!assessment) return null;
 
@@ -40,18 +59,41 @@ export default function Quiz() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const formatTime = () => {
+    const mins = Math.floor(secondsLeft / 60);
+    const secs = secondsLeft % 60;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  // Warning state for the last 2 minutes
+  const isTimeLow = secondsLeft <= 120 && !submitted;
+
   return (
     <AppShell step={3}>
       <div className="mx-auto max-w-3xl">
-        <div className="mb-8 text-center">
+        
+        {/* Header & Timer */}
+        <div className="mb-8 text-center relative">
           <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
             Pre-screen Assessment
           </h1>
           <p className="mt-2 text-slate-400">
             {submitted
-              ? "Review your answers below, then start the live interview."
+              ? "Review your answers below, then start the coding assessment."
               : `Answer all ${questions.length} questions to continue.`}
           </p>
+          
+          {/* Timer Display */}
+          {!submitted && (
+            <div className={`mt-4 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold border transition-colors ${
+              isTimeLow 
+                ? "border-rose-500/50 bg-rose-500/20 text-rose-400 animate-pulse" 
+                : "border-brand-500/30 bg-brand-500/10 text-brand-400"
+            }`}>
+              <Clock className="h-4 w-4" />
+              {formatTime()} remaining
+            </div>
+          )}
         </div>
 
         {submitted && (
@@ -139,16 +181,16 @@ export default function Quiz() {
             <button
               onClick={handleSubmit}
               disabled={!allAnswered}
-              className="btn-primary w-full px-8 sm:w-auto"
+              className="btn-primary w-full px-8 sm:w-auto disabled:opacity-50"
             >
               Submit Answers
             </button>
           ) : (
             <button
-              onClick={() => navigate("/interview")}
+              onClick={() => navigate("/coding")}
               className="btn-primary w-full px-8 sm:w-auto"
             >
-              Start Live Interview →
+              Proceed to Coding Assessment →
             </button>
           )}
         </div>

@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 
 class Settings(BaseSettings):
@@ -9,7 +9,6 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str
 
     # Primary model used by all agents. 
-    # Upgraded to 2.5-flash to prevent 404 deprecation errors.
     GEMINI_MODEL: str = "gemini-3.5-flash"
 
     # Comma-separated fallback models tried (in order) when the primary is
@@ -17,6 +16,10 @@ class Settings(BaseSettings):
     GEMINI_FALLBACK_MODELS: str = (
         "gemini-3.1-flash-lite"
     )
+
+    # --- NEW GROK CONFIGURATION ---
+    GROK_API_KEY: Optional[str] = None
+    GROK_API_BASE: str = "https://api.x.ai/v1"
 
     # Optional keys (Set to None by default so the app doesn't crash if we haven't configured them yet)
     GROQ_API_KEY: Optional[str] = None
@@ -38,9 +41,12 @@ class Settings(BaseSettings):
                 out.append(m)
         return out
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    # --- UPDATED PYDANTIC CONFIGURATION ---
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore" # Prevents crashes when frontend variables (VITE_*) are in the .env file
+    )
 
 # This automatically loads everything when imported!
 settings = Settings()

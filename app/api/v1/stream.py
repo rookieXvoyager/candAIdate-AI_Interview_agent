@@ -16,10 +16,13 @@ router = APIRouter()
 @router.websocket("/stream/{session_id}")
 async def interview_stream(websocket: WebSocket, session_id: str, token: str = Query(None)):
     """
-    The Live Sandbox WebSocket Connection.
+    The Live Sandbox WebSocket Connection (Now DB-Aware).
     """
     await websocket.accept()
     
+    # ==========================================
+    # 1. AUTHENTICATION
+    # ==========================================
     try:
         if token:
             creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
@@ -32,14 +35,55 @@ async def interview_stream(websocket: WebSocket, session_id: str, token: str = Q
         await websocket.close(code=1008)
         return
 
+    # ==========================================
+    # 2. DYNAMIC PROFILE FETCHING
+    # ==========================================
+    candidate_name = "Candidate"
+    target_role = "Software Engineer"
+    profile_summary = "Candidate preparing for a technical interview."
+    
+    try:
+        session_ref = db.collection("sessions").document(session_id)
+        session_doc = session_ref.get()
+        
+        if session_doc.exists:
+            session_data = session_doc.to_dict()
+            target_role = session_data.get("targetRole", target_role)
+            db_uid = session_data.get("uid")
+            
+            # If we have a user ID, fetch their parsed resume profile
+            if db_uid:
+                user_doc = db.collection("users").document(db_uid).get()
+                if user_doc.exists:
+                    profile_data = user_doc.to_dict().get("profile", {})
+                    candidate_name = profile_data.get("candidate_name", candidate_name)
+                    
+                    # Convert skills array to a readable string for the LLM
+                    skills = profile_data.get("core_skills", [])
+                    if skills:
+                        profile_summary = ", ".join(skills) if isinstance(skills, list) else str(skills)
+                        
+            print(f"👤 [Profile Loaded] {candidate_name} applying for {target_role}")
+        else:
+            print("⚠️ [Warning] Session not found. Falling back to generic profile.")
+            
+    except Exception as e:
+        print(f"🚨 [DB Fetch Error]: {e}")
+
+    # ==========================================
+    # 3. INITIALIZE AGENT
+    # ==========================================
     agent = InterviewerAgent(
-        candidate_name="Candidate",
-        target_role="Software Engineer", 
-        profile_summary="Candidate preparing for a technical interview."
+        candidate_name=candidate_name,
+        target_role=target_role, 
+        profile_summary=profile_summary
     )
 
     try:
-        initial_message = "Hi there! Let's get started. Could you briefly introduce yourself?"
+        # Personalize the greeting!
+        first_name = candidate_name.split()[0] if candidate_name != "Candidate" else "there"
+        initial_message = f"Hi {first_name}! Let's get started. Could you briefly introduce yourself?"
+        
         ai_audio_base64 = await generate_speech_from_text(initial_message)
         
         await websocket.send_json({
@@ -95,7 +139,7 @@ async def interview_stream(websocket: WebSocket, session_id: str, token: str = Q
 
                 def save_transcript():
                     try:
-                        db.collection("sessions").document(session_id).update({
+                        session_ref.update({
                             "transcript": firestore.ArrayUnion([
                                 {"speaker": "Candidate", "text": candidate_text},
                                 {"speaker": "Interviewer", "text": ai_response_text}
@@ -109,6 +153,8 @@ async def interview_stream(websocket: WebSocket, session_id: str, token: str = Q
     except WebSocketDisconnect:
         print(f"🔴 [WebSocket] Disconnected: {session_id}")
         try:
+            # Tell the database the session is ready to be evaluated
+            session_ref.update({"status": "ready_for_evaluation"})
             print("📊 [Auto-Eval] Triggering Coaching Agent...")
             async with httpx.AsyncClient() as client:
                 await client.post(f"http://127.0.0.1:8000/api/v1/evaluate/{session_id}")

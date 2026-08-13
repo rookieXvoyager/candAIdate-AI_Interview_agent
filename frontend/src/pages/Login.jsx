@@ -1,8 +1,19 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Lock, AlertTriangle, Check } from "lucide-react";
+// ADDED: react-icons for social buttons
+import { FaGoogle, FaGithub, FaMicrosoft } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
-import { firebaseInitError, isFirebaseConfigured } from "../firebase";
+// ADDED: signInWithPopup and the exported providers from your firebase file
+import { signInWithPopup } from "firebase/auth";
+import { 
+  auth, 
+  firebaseInitError, 
+  isFirebaseConfigured,
+  googleProvider,
+  githubProvider,
+  microsoftProvider
+} from "../firebase";
 import Spinner from "../components/Spinner";
 import { LogoMark } from "../components/Logo";
 
@@ -23,16 +34,20 @@ function friendlyError(code) {
       return "Password should be at least 6 characters.";
     case "auth/invalid-email":
       return "Please enter a valid email address.";
+    case "auth/popup-closed-by-user":
+      return "Sign-in popup was closed before completing.";
+    case "auth/account-exists-with-different-credential":
+      return "An account already exists with the same email address but different sign-in credentials.";
     case "auth/api-key-not-valid":
     case "auth/invalid-api-key":
       return "Firebase isn't configured. Paste your real keys into frontend/.env and restart the dev server.";
     case "auth/configuration-not-found":
     case "auth/operation-not-allowed":
-      return "Email/Password sign-in isn't enabled. Turn it on in Firebase Console → Authentication → Sign-in method → Email/Password.";
+      return "Sign-in method isn't enabled. Turn it on in Firebase Console.";
     case "auth/network-request-failed":
       return "Network error reaching Firebase. Check your connection.";
     default:
-      return "Authentication failed. Please check your Firebase setup and try again.";
+      return "Authentication failed. Please check your setup and try again.";
   }
 }
 
@@ -78,7 +93,6 @@ export default function Login() {
     const formEmail = String(form.get("email") || "").trim();
     const formPassword = String(form.get("password") || "");
 
-    // Keep state aligned with what the browser actually submitted.
     setEmail(formEmail);
     setPassword(formPassword);
 
@@ -94,6 +108,30 @@ export default function Login() {
       const message = friendlyError(code);
       setError(code ? `${message} (${code})` : message);
     } finally {
+      setBusy(false);
+    }
+  };
+
+  // --- UPDATED: Social Login Handler with Popup Close Fix ---
+  const handleSocialLogin = async (provider) => {
+    try {
+      setError("");
+      setBusy(true);
+      await signInWithPopup(auth, provider);
+      navigate("/dashboard");
+    } catch (err) {
+      // If the user simply closed the popup, silently reset the UI without a red error
+      if (err.code === "auth/popup-closed-by-user") {
+        console.log("User closed the login popup.");
+        setError(""); 
+      } else {
+        console.error("Social Auth Error:", err);
+        const code = err?.code || "";
+        const message = friendlyError(code);
+        setError(code ? `${message} (${code})` : message);
+      }
+    } finally {
+      // Always stop the loading spinner
       setBusy(false);
     }
   };
@@ -268,6 +306,45 @@ export default function Login() {
                 {isSignup ? "Create Account" : "Sign In"}
               </button>
             </form>
+
+            {/* --- NEW: Social Authentication Buttons --- */}
+            <div className="mt-6">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="h-px flex-1 bg-white/10" />
+                <span className="text-sm text-slate-400">Or continue with</span>
+                <div className="h-px flex-1 bg-white/10" />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleSocialLogin(googleProvider)}
+                  disabled={busy || !isFirebaseConfigured}
+                  className="flex items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] py-2.5 text-sm transition hover:bg-white/10 disabled:opacity-50"
+                  aria-label="Sign in with Google"
+                >
+                  <FaGoogle className="h-5 w-5 text-slate-200" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSocialLogin(githubProvider)}
+                  disabled={busy || !isFirebaseConfigured}
+                  className="flex items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] py-2.5 text-sm transition hover:bg-white/10 disabled:opacity-50"
+                  aria-label="Sign in with GitHub"
+                >
+                  <FaGithub className="h-5 w-5 text-slate-200" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSocialLogin(microsoftProvider)}
+                  disabled={busy || !isFirebaseConfigured}
+                  className="flex items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] py-2.5 text-sm transition hover:bg-white/10 disabled:opacity-50"
+                  aria-label="Sign in with Microsoft"
+                >
+                  <FaMicrosoft className="h-5 w-5 text-slate-200" />
+                </button>
+              </div>
+            </div>
 
             <p className="mt-6 text-center text-sm text-slate-500">
               {isSignup ? "Already have an account?" : "New here?"}{" "}

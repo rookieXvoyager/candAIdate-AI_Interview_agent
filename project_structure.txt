@@ -1,0 +1,108 @@
+📁 candAIdate/
+├── .firebase
+│   └── hosting.ZnJvbnRlbmQvZGlzdA.cache
+├── .github
+│   └── workflows
+│       └── azure-deploy.yml
+├── app
+│   ├── agents
+│   │   ├── __init__.py
+│   │   ├── _gemini.py
+│   │   ├── assessor.py
+│   │   ├── coach.py
+│   │   ├── generator.py
+│   │   ├── interviewer.py
+│   │   └── parser.py
+│   ├── api
+│   │   ├── v1
+│   │   │   ├── evaluate.py
+│   │   │   ├── interview.py
+│   │   │   ├── setup.py
+│   │   │   └── stream.py
+│   │   └── __init__.py
+│   ├── core
+│   │   ├── __init__.py
+│   │   ├── config.py
+│   │   ├── db.py
+│   │   ├── firebase.py
+│   │   └── security.py
+│   ├── prompts
+│   │   ├── assessor_v1.yaml
+│   │   ├── coach_v1.yaml
+│   │   ├── interviewer_v1.yaml
+│   │   └── parser_v1.yaml
+│   ├── services
+│   │   ├── __init__.py
+│   │   ├── azure_search.py
+│   │   └── azure_speech.py
+│   └── main.py
+├── frontend
+│   ├── src
+│   │   ├── components
+│   │   │   ├── AmbientBackground.jsx
+│   │   │   ├── AppShell.jsx
+│   │   │   ├── Logo.jsx
+│   │   │   ├── ProgressBar.jsx
+│   │   │   ├── ProtectedRoute.jsx
+│   │   │   └── Spinner.jsx
+│   │   ├── context
+│   │   │   ├── AuthContext.jsx
+│   │   │   └── InterviewContext.jsx
+│   │   ├── lib
+│   │   │   └── api.js
+│   │   ├── pages
+│   │   │   ├── Dashboard.jsx
+│   │   │   ├── Feedback.jsx
+│   │   │   ├── History.jsx
+│   │   │   ├── LiveInterview.jsx
+│   │   │   ├── Login.jsx
+│   │   │   ├── Profile.jsx
+│   │   │   ├── Quiz.jsx
+│   │   │   └── Upload.jsx
+│   │   ├── App.jsx
+│   │   ├── firebase.js
+│   │   ├── index.css
+│   │   └── main.jsx
+│   ├── .env
+│   ├── .env.example
+│   ├── .env.local
+│   ├── .gitignore
+│   ├── index.html
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── postcss.config.js
+│   ├── README.md
+│   ├── tailwind.config.js
+│   └── vite.config.js
+├── scripts
+│   ├── evals.py
+│   ├── measure_latency.py
+│   └── seed_vector_db.py
+├── .dockerignore
+├── .env
+├── .firebaserc
+├── .gitignore
+├── ARCHITECTURE.md
+├── BACKEND_CONTEXT.md
+├── Caddyfile
+├── debug_api.py
+├── debug_gemini_models.py
+├── debug_settings_load.py
+├── docker-compose.yml
+├── DOCKER_DEPLOYMENT_PLAN.txt
+├── Dockerfile
+├── Dockerfile.backend
+├── Dockerfile.caddy
+├── Dockerfile.frontend
+├── firebase.json
+├── get_transcript.py
+├── nginx.conf
+├── PROJECT_STATUS.md
+├── PROJECT_STATUS_UPDATE.md
+├── PROJECT_STRUCTURE.md
+├── README.md
+├── requirements.txt
+├── seed_db.py
+├── serviceAccountKey.json
+├── temp_candidate_audio.wav
+└── test_gemini.py

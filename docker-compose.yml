@@ -1,6 +1,9 @@
 version: '3.8'
 
 services:
+  # ---------------------------------------------------------
+  # EXISTING CORE SERVICES
+  # ---------------------------------------------------------
   backend:
     build:
       context: .
@@ -15,6 +18,8 @@ services:
       - ./serviceAccountKey.json:/app/serviceAccountKey.json:ro
     expose:
       - "8000"
+    depends_on:
+      - judge0-server
     networks:
       - candaidate-net
 
@@ -31,7 +36,6 @@ services:
         VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID}
     container_name: candaidate-frontend
     restart: unless-stopped
-    # IMPORTANT: 'expose' 80, but do NOT 'ports' to host. Caddy handles host ports.
     expose:
       - "80"
     depends_on:
@@ -56,9 +60,64 @@ services:
     networks:
       - candaidate-net
 
+  # ---------------------------------------------------------
+  # JUDGE0 CE INFRASTRUCTURE
+  # ---------------------------------------------------------
+  judge0-server:
+    image: judge0/judge0:1.13.1
+    container_name: judge0-server
+    volumes:
+      - ./judge0.conf:/judge0.conf:ro
+    ports:
+      - "2358:2358" # Exposed so you can test it locally via curl
+    privileged: true
+    restart: unless-stopped
+    depends_on:
+      - judge0-db
+      - judge0-redis
+    networks:
+      - candaidate-net
+
+  judge0-workers:
+    image: judge0/judge0:1.13.1
+    container_name: judge0-workers
+    command: ["./scripts/workers"]
+    volumes:
+      - ./judge0.conf:/judge0.conf:ro
+    privileged: true
+    restart: unless-stopped
+    depends_on:
+      - judge0-db
+      - judge0-redis
+    networks:
+      - candaidate-net
+
+  judge0-db:
+    image: postgres:13.0
+    container_name: judge0-db
+    env_file: judge0.conf
+    volumes:
+      - postgres-data:/var/lib/postgresql/data/
+    restart: unless-stopped
+    networks:
+      - candaidate-net
+
+  judge0-redis:
+    image: redis:6.0
+    container_name: judge0-redis
+    command: ["bash", "-c", 'docker-entrypoint.sh --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+    env_file: judge0.conf
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - candaidate-net
+
 volumes:
   caddy_data:
   caddy_config:
+  postgres-data:
+  redis-data:
 
 networks:
   candaidate-net:

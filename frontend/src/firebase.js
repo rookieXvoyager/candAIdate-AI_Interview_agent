@@ -1,7 +1,8 @@
 // Firebase Web SDK initialization.
 // Values are read from Vite env vars (see .env.example). These are public web keys.
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+// ADDED: Social Auth Providers
+import { getAuth, GoogleAuthProvider, GithubAuthProvider, OAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -34,6 +35,11 @@ if (hasFirebaseEnv) {
     console.error("Firebase initialization failed:", error);
   }
 }
+
+// --- NEW: Initialize and export Social Providers ---
+export const googleProvider = new GoogleAuthProvider();
+export const githubProvider = new GithubAuthProvider();
+export const microsoftProvider = new OAuthProvider('microsoft.com');
 
 // True only when real values are present and Firebase auth initialized cleanly.
 export const isFirebaseConfigured = hasFirebaseEnv && !firebaseInitError && !!auth;

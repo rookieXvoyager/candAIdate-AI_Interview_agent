@@ -1,12 +1,15 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Login from "./pages/Login";
+import Dashboard from "./pages/Dashboard"; // <-- ADDED THIS
 import Upload from "./pages/Upload";
 import Profile from "./pages/Profile";
 import Quiz from "./pages/Quiz";
+import CodingAssessment from "./pages/CodingAssessment";
 import LiveInterview from "./pages/LiveInterview";
 import Feedback from "./pages/Feedback";
 import History from "./pages/History";
+
 
 export default function App() {
   return (
@@ -14,15 +17,26 @@ export default function App() {
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="/login" element={<Login />} />
 
-      {/* Step 1 — Upload lives at /dashboard (post-login landing). */}
+      {/* New Dashboard Landing Page */}
       <Route
         path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Step 1 — Upload (now mapped to /setup) */}
+      <Route
+        path="/setup"
         element={
           <ProtectedRoute>
             <Upload />
           </ProtectedRoute>
         }
       />
+      
       <Route
         path="/profile"
         element={
@@ -47,6 +61,16 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+      {/* --- ADD THIS NEW ROUTE --- */}
+      <Route
+        path="/coding"
+        element={
+          <ProtectedRoute>
+            <CodingAssessment />
+          </ProtectedRoute>
+        }
+      />
+      {/* -------------------------- */}
       <Route
         path="/feedback"
         element={

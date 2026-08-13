@@ -1,7 +1,8 @@
 import { Check } from "lucide-react";
 
 // Top funnel progress indicator shared across the flow.
-const STEPS = ["Upload", "Profile", "Assessment", "Interview", "Feedback"];
+// FIX: Added "Coding" to make it exactly 6 steps.
+const STEPS = ["Upload", "Profile", "Assessment", "Coding", "Interview", "Feedback"];
 
 export default function ProgressBar({ current = 1 }) {
   return (

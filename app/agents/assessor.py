@@ -27,7 +27,7 @@ class MCQ(BaseModel):
     explanation: str = Field(description="A brief, 1-2 sentence explanation of why the correct answer is right.")
 
 class Assessment(BaseModel):
-    questions: List[MCQ] = Field(description="A list containing exactly 5 multiple-choice questions.")
+    questions: List[MCQ] = Field(description="A list containing exactly 20 multiple-choice questions.")
 
 # 2. Asynchronous Agent Function
 async def generate_assessment(profile: ParsedProfile) -> Assessment:
