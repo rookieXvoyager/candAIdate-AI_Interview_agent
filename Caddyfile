@@ -1,14 +1,27 @@
-candaidate.app, www.candaidate.app {
-    # 1. API Route: Forward to Backend
-    route /api/* {
+candaidate.app, www.candaidate.app, 140.245.220.218 {
+
+    # 1. Forward API routes, health check, and API documentation to FastAPI Backend
+    handle /api/* {
         reverse_proxy backend:8000
     }
 
-    # 2. Frontend Route: Forward to Nginx (Frontend)
-    route /* {
+    handle /health {
+        reverse_proxy backend:8000
+    }
+
+    handle /docs {
+        reverse_proxy backend:8000
+    }
+
+    handle /openapi.json {
+        reverse_proxy backend:8000
+    }
+
+    # 2. Forward all other web requests to React/Nginx Frontend
+    handle {
         reverse_proxy frontend:80
     }
 
-    # Compression
+    # Compression for text, JSON, and web assets
     encode zstd gzip
 }

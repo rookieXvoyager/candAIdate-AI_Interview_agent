@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.setup import router as setup_router
 from app.api.v1.stream import router as stream_router
 from app.api.v1.evaluate import router as evaluate_router
-from app.api.v1.coding import router as coding_router  # Added coding router import
+from app.api.v1.coding import router as coding_router
 
 print(f"[BOOT] main imported from={__file__} cwd={os.getcwd()} py={sys.executable}")
 
@@ -18,12 +18,14 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# 🔒 Configure CORS for Production
+# 🔒 Configure CORS for Production & Local Development
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",       # Local React development
+        "http://localhost:5173",       # Local React development (Vite)
         "http://127.0.0.1:5173",       # Local React development
+        "http://localhost:3000",       # Local Next.js/React development
+        "http://140.245.220.218",      # Server Public IP (Direct HTTP testing)
         "https://candaidate.app",      # Production Domain
         "https://www.candaidate.app"   # Production Domain (www)
     ],
@@ -32,11 +34,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount routers
+# Mount API routers
 app.include_router(setup_router, prefix="/api/v1/setup", tags=["Setup & Pre-screening"])
 app.include_router(stream_router, prefix="/api/v1/interview", tags=["Live Interview"])
-app.include_router(evaluate_router, prefix='/api/v1/evaluate', tags=["Evaluation & Coaching"])
-app.include_router(coding_router, prefix="/api/v1/coding", tags=["Coding Assessment"]) # Mounted coding router
+app.include_router(evaluate_router, prefix="/api/v1/evaluate", tags=["Evaluation & Coaching"])
+app.include_router(coding_router, prefix="/api/v1/coding", tags=["Coding Assessment"])
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
