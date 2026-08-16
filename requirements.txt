@@ -13,3 +13,4 @@ azure-cognitiveservices-speech
 httpx
 async-exit-stack
 async-generator
+openai
