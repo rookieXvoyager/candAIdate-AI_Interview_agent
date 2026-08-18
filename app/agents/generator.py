@@ -1,9 +1,9 @@
 import os
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types  # Imported to enable Search Grounding
 from openai import AsyncOpenAI 
 from app.core.config import settings
-
 
 # Load environment variables from your .env file
 load_dotenv()
@@ -25,13 +25,17 @@ async def generate_sample_jd(role: str, experience: str) -> str:
     2. Do NOT use markdown formatting (no bolding, no asterisks). Just use standard paragraphs and newlines.
     3. Include a brief summary of the role, 3-4 key responsibilities, and 3-4 core requirements/skills.
     4. Ensure the requirements match the {experience} level.
+    5. Web Search / Trending Tech: Use your real-time search capabilities to discover the absolute latest, highly-trending technologies, frameworks, libraries, and cloud platforms specific to a {role} today. Extract as many relevant tech tags as possible and embed them naturally into the core requirements.
     """
 
-    # --- PRIMARY ENGINE: GEMINI (Modern SDK) ---
+    # --- PRIMARY ENGINE: GEMINI (Modern SDK with Search Grounding) ---
     try:
         response = client.models.generate_content(
             model=settings.GEMINI_MODEL, 
-            contents=prompt
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())]
+            )
         )
         return response.text.strip()
         
@@ -61,7 +65,7 @@ async def _fallback_to_grok(prompt: str) -> str:
         response = await openai_client.chat.completions.create(
             model="grok-2-latest",
             messages=[
-                {"role": "system", "content": "You are an expert HR recruiter."},
+                {"role": "system", "content": "You are an expert HR recruiter with access to real-time tech trends."},
                 {"role": "user", "content": prompt},
             ],
         )
