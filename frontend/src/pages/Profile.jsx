@@ -17,7 +17,8 @@ function Pill({ children, tone = "slate" }) {
 
 export default function Profile() {
   const { getToken } = useAuth();
-  const { profile, setAssessment, setSessionId } = useInterview();
+  const { profile, setAssessment, setSessionId, setMcqResult, setCodingResult } =
+    useInterview();
   const navigate = useNavigate();
 
   const [error, setError] = useState("");
@@ -70,6 +71,8 @@ export default function Profile() {
       }
 
       const data = await res.json();
+      setMcqResult(null);
+      setCodingResult(null);
       setAssessment(data.assessment);
       setSessionId(data.session_id);
       navigate("/quiz");

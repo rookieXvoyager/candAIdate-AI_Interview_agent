@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   collection,
   query,
@@ -7,16 +7,23 @@ import {
   getDocs,
   doc,
   getDoc,
+  updateDoc,
 } from "firebase/firestore";
 import { Inbox } from "lucide-react";
 import { db, isFirebaseConfigured } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import AppShell from "../components/AppShell";
 import Spinner from "../components/Spinner";
+import { useInterview } from "../context/InterviewContext";
+import { API_BASE } from "../lib/api";
 
 const STATUS_META = {
   pending_mcq: { label: "Assessment pending", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30" },
+  pending_assessment: { label: "Assessment pending", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30" },
+  pending_coding: { label: "Coding Pending", cls: "bg-violet-500/15 text-violet-300 border-violet-500/30" },
+  pending_interview: { label: "Ready for Interview", cls: "bg-sky-500/15 text-sky-300 border-sky-500/30" },
   ready_for_evaluation: { label: "Awaiting feedback", cls: "bg-sky-500/15 text-sky-300 border-sky-500/30" },
+  in_progress: { label: "Interview in progress", cls: "bg-violet-500/15 text-violet-300 border-violet-500/30" },
   completed: { label: "Completed", cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
 };
 
@@ -42,7 +49,10 @@ function scoreColor(score) {
 }
 
 export default function History() {
-  const { currentUser } = useAuth();
+  const { currentUser, getToken } = useAuth();
+  const { setSessionId, setAssessment, setEvaluation, resetInterviewSession } =
+    useInterview();
+  const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -116,7 +126,11 @@ export default function History() {
               Your past sessions and scorecards.
             </p>
           </div>
-          <Link to="/dashboard" className="btn-primary">
+          <Link
+            to="/dashboard"
+            className="btn-primary"
+            onClick={resetInterviewSession}
+          >
             + New Interview
           </Link>
         </div>
@@ -177,6 +191,121 @@ export default function History() {
                         <p className="text-[10px] uppercase tracking-wide text-slate-500">
                           / 100
                         </p>
+                      </div>
+                    )}
+                    {s.status === "pending_interview" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSessionId(s.id);
+                          navigate("/interview");
+                        }}
+                        className="btn-primary px-3 py-2 text-xs"
+                      >
+                        Continue Interview
+                      </button>
+                    )}
+                    {s.status === "pending_coding" && (
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSessionId(s.id);
+                            navigate("/coding");
+                          }}
+                          className="btn-primary px-3 py-2 text-xs"
+                        >
+                          Continue Coding
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await updateDoc(doc(db, "sessions", s.id), {
+                              status: "cancelled",
+                            });
+                            setSessions((current) =>
+                              current.map((session) =>
+                                session.id === s.id
+                                  ? { ...session, status: "cancelled" }
+                                  : session
+                              )
+                            );
+                          }}
+                          className="rounded-lg border border-rose-500/30 px-3 py-2 text-xs font-semibold text-rose-300"
+                        >
+                          End Session
+                        </button>
+                      </div>
+                    )}
+                    {(s.status === "ready_for_evaluation" ||
+                      s.status === "in_progress") && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            setSessionId(s.id);
+                            const token = await getToken();
+                            const response = await fetch(
+                              `${API_BASE}/api/v1/evaluate/${encodeURIComponent(s.id)}`,
+                              {
+                                method: "POST",
+                                headers: {
+                                  Authorization: `Bearer ${token}`,
+                                },
+                              }
+                            );
+                            if (!response.ok) {
+                              const data = await response.json().catch(() => ({}));
+                              throw new Error(
+                                data.detail || "Could not generate feedback."
+                              );
+                            }
+                            const payload = await response.json();
+                            setEvaluation(payload?.data || null);
+                            navigate("/feedback");
+                          } catch (error) {
+                            console.error("Finalize session failed:", error);
+                            setSessionId(s.id);
+                            navigate("/feedback");
+                          }
+                        }}
+                        className="btn-primary px-3 py-2 text-xs"
+                      >
+                        Finalize &amp; View Result
+                      </button>
+                    )}
+                    {(s.status === "pending_mcq" ||
+                      s.status === "pending_assessment") && (
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSessionId(s.id);
+                            setAssessment(s.mcq_quiz || null);
+                            navigate("/quiz");
+                          }}
+                          className="rounded-lg border border-brand-500/40 px-3 py-2 text-xs font-semibold text-brand-300"
+                        >
+                          Resume Assessment
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await updateDoc(doc(db, "sessions", s.id), {
+                              status: "cancelled",
+                            });
+                            setSessions((current) =>
+                              current.map((session) =>
+                                session.id === s.id
+                                  ? { ...session, status: "cancelled" }
+                                  : session
+                              )
+                            );
+                          }}
+                          className="rounded-lg border border-rose-500/30 px-3 py-2 text-xs font-semibold text-rose-300"
+                        >
+                          End Session
+                        </button>
                       </div>
                     )}
                   </div>

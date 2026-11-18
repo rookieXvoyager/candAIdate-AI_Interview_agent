@@ -13,11 +13,35 @@ try:
 except ImportError:
     Groq = None
 
+class SectionFeedback(BaseModel):
+    score: int = Field(..., description="Section score from 0 to 100.")
+    summary: str = Field(..., description="Concise section-specific summary.")
+    strengths: List[str] = Field(default_factory=list)
+    improvements: List[str] = Field(default_factory=list)
+
+
+class OverallFeedback(BaseModel):
+    verdict: str = Field(..., description="Readiness verdict.")
+    executive_summary: str = Field(..., description="Overall executive summary.")
+    key_strengths: List[str] = Field(default_factory=list)
+    priority_improvements: List[str] = Field(default_factory=list)
+    next_steps: List[str] = Field(default_factory=list)
+
+
 class EvaluationResult(BaseModel):
-    score: int= Field(..., description="Overall score out of 100 based on technical accuracy and communication.")
-    strengths: List[str] = Field(..., description="Top 2 to 3 strengths demonstrated by the candidate.")
-    weaknesses: List[str]=Field(..., description="Top 2 to 3 areas where the candidate needs improvement.")
-    detailed_feedback: str= Field(..., description="A comprehensive, objective paragraph of feedback.")
+    score: int = Field(..., description="Legacy overall score.")
+    overall_score: int = Field(..., description="Weighted overall score.")
+    strengths: List[str] = Field(default_factory=list)
+    weaknesses: List[str] = Field(default_factory=list)
+    detailed_feedback: str = Field(..., description="Legacy detailed feedback.")
+    score_breakdown: dict = Field(default_factory=dict)
+    section_feedback: dict = Field(default_factory=dict)
+    overall_feedback: OverallFeedback = Field(
+        default_factory=lambda: OverallFeedback(
+            verdict="Needs more practice",
+            executive_summary="No detailed overall feedback was generated.",
+        )
+    )
 
 class CoachingAgent:
     def __init__(self):
@@ -34,12 +58,26 @@ class CoachingAgent:
         except FileNotFoundError:
             return "You are an expert technical interview coach."
         
-    def evaluate_interview(self, target_role:str, transcript:str)-> EvaluationResult:
+    def evaluate_interview(
+        self,
+        target_role: str,
+        transcript: str,
+        section_context: dict | None = None,
+    ) -> EvaluationResult:
         prompt = f"""
         TARGET ROLE: {target_role}
 
         INTERVIEW TRANSCRIPT:
         {transcript}
+
+        DETERMINISTIC SECTION CONTEXT:
+        {json.dumps(section_context or {}, ensure_ascii=False)}
+
+        Score the candidate holistically. The overall score and score breakdown
+        are already deterministic and MUST remain authoritative. Do not change
+        overall_score or score_breakdown. Return section_feedback for mcq,
+        coding when present, and interview; and overall_feedback with verdict,
+        executive_summary, key_strengths, priority_improvements, and next_steps.
         """
         
         # 1. Try Primary (Gemini)
@@ -72,7 +110,7 @@ class CoachingAgent:
             """
             
             completion = self.groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model=settings.GROQ_MODEL,
                 messages=[
                     {"role": "system", "content": self.system_prompt + "\n" + schema_instructions},
                     {"role": "user", "content": prompt}

@@ -49,9 +49,37 @@ async def save_mcq_assessment(session_id:str, uid:str, target_role:str, assessme
     doc_ref.set({
         "uid":uid,
         "targetRole":target_role,
-        "status":"pending_mcq",#Indicating user still needs taking the quiz
+        "status":"pending_assessment",
         "mcq_quiz":assessment_data,
         "createdAt":firestore.SERVER_TIMESTAMP
 
     })
     return session_id
+
+
+async def save_mcq_submission(
+    session_id: str,
+    uid: str,
+    mcq_answers: list,
+    mcq_result: dict,
+) -> None:
+    """Persist quiz answers and advance the session to the interview stage."""
+    doc_ref = db.collection("sessions").document(session_id)
+    snapshot = doc_ref.get()
+
+    if not snapshot.exists:
+        raise LookupError("Interview session not found.")
+
+    session_data = snapshot.to_dict() or {}
+    if session_data.get("uid") != uid:
+        raise PermissionError("You do not own this interview session.")
+
+    doc_ref.set(
+        {
+            "mcq_answers": mcq_answers,
+            "mcq_result": mcq_result,
+            "status": "pending_coding",
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        },
+        merge=True,
+    )

@@ -1,6 +1,7 @@
 import os
 import asyncio
 import json
+import httpx
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from firebase_admin import auth  # NEW: Import Firebase auth for manual token verification
 from app.agents.interviewer import InterviewerAgent
@@ -87,13 +88,21 @@ async def interview_stream(
 
         initial_prompt = "Hello, I am ready to begin the interview."
         welcome_msg = await agent.generate_response(initial_prompt)
-        
+        welcome_complete = "[INTERVIEW_COMPLETE]" in welcome_msg
+        welcome_msg = welcome_msg.replace("[INTERVIEW_COMPLETE]", "").strip()
         transcript.append({"speaker": "Interviewer", "text": welcome_msg})
-        await websocket.send_text(welcome_msg)
+        await websocket.send_text(json.dumps({
+            "type": "ai_message",
+            "content": welcome_msg,
+            "text": welcome_msg,
+            "interview_complete": welcome_complete,
+        }))
+        candidate_answer_count = 0
 
         while True:
             try:
                 user_msg = await asyncio.wait_for(websocket.receive_text(), timeout=450.0)
+                msg_data = {}
                 try:
                     msg_data = json.loads(user_msg)
                     if msg_data.get("type") == "pong":
@@ -101,12 +110,41 @@ async def interview_stream(
                 except json.JSONDecodeError:
                     pass
 
-                transcript.append({"speaker": "Candidate", "text": user_msg})
+                if isinstance(msg_data, dict) and msg_data.get("type") == "text":
+                    candidate_text = str(msg_data.get("text", "")).strip()
+                else:
+                    candidate_text = user_msg.strip()
+                if not candidate_text:
+                    continue
 
-                ai_response = await agent.generate_response(user_msg)
+                candidate_answer_count += 1
+                transcript.append({"speaker": "Candidate", "text": candidate_text})
 
-                transcript.append({"speaker": "Interviewer", "text": ai_response})
-                await websocket.send_text(ai_response)
+                ai_response = await agent.generate_response(candidate_text)
+                interview_complete = (
+                    "[INTERVIEW_COMPLETE]" in ai_response
+                    or candidate_answer_count >= 7
+                )
+                clean_response = ai_response.replace(
+                    "[INTERVIEW_COMPLETE]",
+                    "",
+                ).strip()
+                if not clean_response:
+                    clean_response = "Thank you. That concludes the interview."
+
+                transcript.append({"speaker": "Interviewer", "text": clean_response})
+                await websocket.send_text(json.dumps({
+                    "type": "ai_message",
+                    "content": clean_response,
+                    "text": clean_response,
+                    "interview_complete": interview_complete,
+                }))
+                if interview_complete:
+                    await websocket.send_text(json.dumps({
+                        "type": "interview_complete",
+                        "content": clean_response,
+                        "text": clean_response,
+                    }))
             
             except asyncio.TimeoutError:
                 print(f"Session {session_id} timed out. Zombie connection detected.")
@@ -123,9 +161,18 @@ async def interview_stream(
             ping_task.cancel()
             
         # save transcript to firestore when websocket closes
-        if 'session_ref' in locals() and 'transcript' in locals() and transcript:
+        if 'session_ref' in locals():
+            saved_transcript = transcript if 'transcript' in locals() and isinstance(transcript, list) else []
             session_ref.update({
-                "transcript": transcript,
-                "status": "ready_for_evaluation"
+                "transcript": saved_transcript,
+                "status": "ready_for_evaluation",
+                "ended_early": True,
             })
             print(f"Transcript saved for session {session_id}")
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    await client.post(
+                        f"http://backend:8000/api/v1/evaluate/{session_id}"
+                    )
+            except Exception as exc:
+                print(f"Auto-evaluation trigger failed: {exc}")

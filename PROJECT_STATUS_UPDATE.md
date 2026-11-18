@@ -1,5 +1,9 @@
 # candAIdate Project Status Update
 
+> **Current-state notice:** This historical snapshot may contain older pipeline
+> details. The current workflow includes the Coding Assessment before the Live
+> Interview and uses holistic weighted evaluation on `/feedback`.
+
 Date: 2026-07-12
 Scope: Repository sources and deployment assets at the project root, excluding generated dependency folders such as `node_modules/`, `venv/`, and build outputs.
 

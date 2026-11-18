@@ -1,6 +1,7 @@
 import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from google.cloud import firestore
 
 try:
     from app.core.db import db
@@ -55,6 +56,9 @@ class SubmitRequest(BaseModel):
     language: str
     question_id: str
     session_id: str | None = "current-session"
+
+class CodingSkipRequest(BaseModel):
+    session_id: str
 
 
 async def _submit_to_judge0(
@@ -155,6 +159,23 @@ async def execute_code(req: ExecutionRequest):
 # ---------------------------------------------------------------------------
 # Route 3 — Submit (Evaluate All Hidden Test Cases)
 # ---------------------------------------------------------------------------
+@router.get("/session/{session_id}")
+async def get_coding_session(session_id: str):
+    if not db:
+        raise HTTPException(status_code=503, detail="Database not connected.")
+
+    snapshot = db.collection("sessions").document(session_id).get()
+    if not snapshot.exists:
+        raise HTTPException(status_code=404, detail="Interview session not found.")
+
+    session = snapshot.to_dict() or {}
+    return {
+        "session_id": session_id,
+        "status": session.get("status"),
+        "coding_result": session.get("coding_result"),
+    }
+
+
 @router.post("/submit")
 async def submit_question(req: SubmitRequest):
     if not db:
@@ -175,6 +196,7 @@ async def submit_question(req: SubmitRequest):
     passed     = 0
     infra_fail = 0
     total      = len(hidden_cases)
+    verdicts = []
 
     # Use a single AsyncClient session for all requests to avoid TCP overhead
     async with httpx.AsyncClient() as client:
@@ -187,6 +209,12 @@ async def submit_question(req: SubmitRequest):
                 # Check if it was a compilation error so we can short-circuit early
                 if data.get("status", {}).get("id") == 6:
                     print(f"[submit] TC {idx+1}: Compilation failed, stopping early.")
+                    verdicts.append({
+                        "index": idx,
+                        "status": "compilation_error",
+                        "stdout": data.get("stdout"),
+                        "expected_output": tc.get("expected_output", ""),
+                    })
                     break
 
                 if result["status"] == "success":
@@ -194,18 +222,84 @@ async def submit_question(req: SubmitRequest):
                     expected = tc.get("expected_output", "").strip()
                     if stdout == expected:
                         passed += 1
+                        verdict = "passed"
                         print(f"[submit] TC {idx+1}: PASS")
                     else:
+                        verdict = "failed"
                         print(f"[submit] TC {idx+1}: WRONG — got {stdout[:60]!r}, expected {expected[:60]!r}")
                 else:
+                    verdict = "infra_error"
                     print(f"[submit] TC {idx+1}: {result.get('message', '')[:80]}")
+                verdicts.append({
+                    "index": idx,
+                    "status": verdict,
+                    "stdout": data.get("stdout"),
+                    "expected_output": tc.get("expected_output", ""),
+                })
 
             except Exception as exc:
                 print(f"[submit] TC {idx+1}: infra error — {exc}")
                 infra_fail += 1
+                verdicts.append({
+                    "index": idx,
+                    "status": "infra_error",
+                    "stdout": None,
+                    "expected_output": tc.get("expected_output", ""),
+                })
 
     result_payload: dict = {"status": "success", "passed": passed, "total": total}
     if infra_fail:
         result_payload["warning"] = f"{infra_fail} case(s) failed due to sandbox load. Resubmit to retry."
-        
+
+    if db and req.session_id and req.session_id != "current-session":
+        session_ref = db.collection("sessions").document(req.session_id)
+        snapshot = session_ref.get()
+        if snapshot.exists:
+            session_ref.set(
+                {
+                    "status": "pending_interview",
+                    "coding_result": {
+                        "passed": passed,
+                        "total": total,
+                        "warning": result_payload.get("warning"),
+                        "session_id": req.session_id,
+                        "problem": {
+                            "question_id": req.question_id,
+                            "language": req.language,
+                        },
+                        "submitted_code": req.code,
+                        "verdicts": verdicts,
+                        "attempted": True,
+                        "skipped": False,
+                    },
+                    "updatedAt": firestore.SERVER_TIMESTAMP,
+                },
+                merge=True,
+            )
+
     return result_payload
+
+
+@router.post("/skip")
+async def skip_coding(req: CodingSkipRequest):
+    if not db:
+        raise HTTPException(status_code=503, detail="Database not connected.")
+
+    session_ref = db.collection("sessions").document(req.session_id)
+    snapshot = session_ref.get()
+    if not snapshot.exists:
+        raise HTTPException(status_code=404, detail="Interview session not found.")
+
+    session_ref.set(
+        {
+            "status": "pending_interview",
+            "coding_result": {
+                "skipped": True,
+                "passed": 0,
+                "total": 0,
+                "session_id": req.session_id,
+            },
+        },
+        merge=True,
+    )
+    return {"status": "success", "skipped": True}

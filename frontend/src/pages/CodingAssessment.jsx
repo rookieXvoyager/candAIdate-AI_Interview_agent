@@ -7,10 +7,12 @@ import {
 } from "lucide-react";
 import AppShell from "../components/AppShell";
 import Spinner from "../components/Spinner";
+import { useInterview } from "../context/InterviewContext";
 import { API_BASE } from "../lib/api";
 
 export default function CodingAssessment() {
   const navigate = useNavigate();
+  const { sessionId, setCodingResult } = useInterview();
 
   const [questions,        setQuestions]        = useState([]);
   const [isLoading,        setIsLoading]        = useState(true);
@@ -35,6 +37,20 @@ export default function CodingAssessment() {
   useEffect(() => {
     const fetchQuestions = async () => {
       try {
+        if (sessionId) {
+          const sessionResponse = await fetch(
+            `${API_BASE}/api/v1/coding/session/${encodeURIComponent(sessionId)}`
+          );
+          if (!sessionResponse.ok) {
+            throw new Error("Failed to restore the coding session.");
+          }
+          const sessionData = await sessionResponse.json();
+          if (sessionData.status === "pending_interview") {
+            navigate("/interview");
+            return;
+          }
+        }
+
         const response = await fetch(`${API_BASE}/api/v1/coding/questions`);
         if (!response.ok) throw new Error("Failed to load questions from database.");
         const data = await response.json();
@@ -46,7 +62,7 @@ export default function CodingAssessment() {
       }
     };
     fetchQuestions();
-  }, []);
+  }, [navigate, sessionId]);
 
   const currentQ = questions[activeQ];
 
@@ -106,6 +122,7 @@ export default function CodingAssessment() {
       code:        codeAnswers[`${activeQ}-${language}`] || "",
       language,
       question_id: currentQ.id,
+      session_id:  sessionId,
     };
 
     try {
@@ -117,6 +134,12 @@ export default function CodingAssessment() {
       const data = await response.json();
 
       if (data.status === "success") {
+        setCodingResult({
+          passed: data.passed,
+          total: data.total,
+          warning: data.warning || null,
+          session_id: sessionId,
+        });
         setEvaluationModal({
           passed:  data.passed,
           total:   data.total,
@@ -129,6 +152,29 @@ export default function CodingAssessment() {
       alert("Network Error: Could not evaluate hidden test cases.");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleSkipCoding = async () => {
+    if (!sessionId) {
+      navigate("/interview");
+      return;
+    }
+
+    try {
+      await fetch(`${API_BASE}/api/v1/coding/skip`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+    } finally {
+      setCodingResult({
+        skipped: true,
+        passed: 0,
+        total: 0,
+        session_id: sessionId,
+      });
+      navigate("/interview");
     }
   };
 
@@ -151,7 +197,7 @@ export default function CodingAssessment() {
       <AppShell step={4}>
         <div className="card flex flex-col items-center p-10 text-center mx-auto max-w-lg mt-10">
           <AlertCircle className="mb-4 h-10 w-10 text-rose-500" />
-          <h2 className="text-xl font-bold text-white mb-2">Failed to load assessment</h2>
+          <h2 className="text-xl font-bold text-white mb-2">Failed to load coding assessment</h2>
           <p className="text-slate-400">{error || "No questions available."}</p>
         </div>
       </AppShell>
@@ -184,8 +230,14 @@ export default function CodingAssessment() {
               </div>
             )}
 
-            <button onClick={() => setEvaluationModal(null)} className="btn-primary w-full py-3">
-              Continue Assessment
+            <button
+              onClick={() => {
+                setEvaluationModal(null);
+                navigate("/interview");
+              }}
+              className="btn-primary w-full py-3"
+            >
+              Continue to Live Interview
             </button>
           </div>
         </div>
@@ -338,6 +390,14 @@ export default function CodingAssessment() {
                 >
                   {isExecuting ? <Spinner className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                   {isExecuting ? "Running..." : "Run Code"}
+                </button>
+
+                <button
+                   type="button"
+                   onClick={handleSkipCoding}
+                   className="btn-ghost border-navy-600 px-4 py-1.5 text-sm"
+                >
+                   Skip Coding
                 </button>
 
                 <button

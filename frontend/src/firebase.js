@@ -36,10 +36,21 @@ if (hasFirebaseEnv) {
   }
 }
 
-// --- NEW: Initialize and export Social Providers ---
+// OAuth provider configuration.
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope("email");
+googleProvider.addScope("profile");
+googleProvider.setCustomParameters({ prompt: "select_account" });
+
 export const githubProvider = new GithubAuthProvider();
-export const microsoftProvider = new OAuthProvider('microsoft.com');
+githubProvider.addScope("read:user");
+githubProvider.addScope("user:email");
+
+export const microsoftProvider = new OAuthProvider("microsoft.com");
+microsoftProvider.addScope("email");
+microsoftProvider.addScope("profile");
+microsoftProvider.addScope("openid");
+microsoftProvider.setCustomParameters({ prompt: "select_account" });
 
 // True only when real values are present and Firebase auth initialized cleanly.
 export const isFirebaseConfigured = hasFirebaseEnv && !firebaseInitError && !!auth;

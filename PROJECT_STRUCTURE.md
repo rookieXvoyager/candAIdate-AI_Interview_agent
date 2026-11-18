@@ -1,5 +1,9 @@
 # candAIdate Repository Structure
 
+> **Current-state notice:** The active frontend includes Coding, Voice Interview,
+> and Feedback/Recharts modules; the backend includes setup, coding, interview,
+> and evaluation routers.
+
 This file captures the repository layout from the latest project rescan. It includes source, configuration, local environment files, and generated output directories that are present in the workspace.
 
 ## Root

@@ -1,5 +1,10 @@
 # candAIdate Project Status Update
 
+> **Current-state notice:** This historical status snapshot should be read with
+> the root [README.md](/README.md). Current production behavior includes
+> session resumability, Judge0 coding, popup OAuth, browser TTS/STT, and
+> holistic MCQ/Coding/Interview evaluation.
+
 Date: 2026-07-22
 Scope: Repository sources and deployment assets at the project root, excluding generated dependency folders such as `node_modules/`, `venv/`, and build outputs.
 

@@ -1,24 +1,140 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
-// Holds the data that flows across the multi-step interview funnel:
-// profile (from /parse) → assessment + sessionId (from /generate-mcq)
-// → transcript/score → evaluation (from /evaluate).
 const InterviewContext = createContext(null);
 
-export function InterviewProvider({ children }) {
-  const [profile, setProfile] = useState(null); // ParsedProfile
-  const [assessment, setAssessment] = useState(null); // { questions: [...] }
-  const [sessionId, setSessionId] = useState(null); // sess_xxxxxxxx
-  const [quizScore, setQuizScore] = useState(null); // { correct, total }
-  const [evaluation, setEvaluation] = useState(null); // coach feedback
+function readTaggedResult(key, sessionId) {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(key) || "null");
+    if (!value) return null;
+    if (!sessionId || value.session_id !== sessionId) return null;
+    return value;
+  } catch {
+    return null;
+  }
+}
 
-  const reset = () => {
+export function InterviewProvider({ children }) {
+  const [storedSessionId] = useState(
+    () => sessionStorage.getItem("candAIdate.sessionId") || null
+  );
+  const [profile, setProfile] = useState(null);
+  const [assessment, setAssessment] = useState(() => {
+    try {
+      return JSON.parse(sessionStorage.getItem("candAIdate.assessment") || "null");
+    } catch {
+      return null;
+    }
+  });
+  const [sessionId, setSessionIdState] = useState(() => storedSessionId);
+  const [quizScore, setQuizScore] = useState(null);
+  const [mcqResult, setMcqResultState] = useState(
+    () => readTaggedResult("candAIdate.mcqResult", storedSessionId)
+  );
+  const [codingResult, setCodingResultState] = useState(
+    () => readTaggedResult("candAIdate.codingResult", storedSessionId)
+  );
+  const [evaluation, setEvaluationState] = useState(
+    () => readTaggedResult("candAIdate.evaluation", storedSessionId)
+  );
+
+  const clearResultStorage = () => {
+    sessionStorage.removeItem("candAIdate.mcqResult");
+    sessionStorage.removeItem("candAIdate.codingResult");
+    sessionStorage.removeItem("candAIdate.evaluation");
+  };
+
+  const setSessionId = (newId) => {
+    const normalizedId = newId || null;
+    setSessionIdState((currentId) => {
+      if (currentId !== normalizedId) {
+        setMcqResultState(null);
+        setCodingResultState(null);
+        setEvaluationState(null);
+        clearResultStorage();
+      }
+      return normalizedId;
+    });
+  };
+
+  const setMcqResult = (value) => {
+    setMcqResultState(
+      value ? { ...value, session_id: sessionId } : null
+    );
+  };
+
+  const setCodingResult = (value) => {
+    setCodingResultState(
+      value ? { ...value, session_id: sessionId } : null
+    );
+  };
+
+  const setEvaluation = (value) => {
+    setEvaluationState(
+      value ? { ...value, session_id: sessionId } : null
+    );
+  };
+
+  const resetInterviewSession = () => {
     setProfile(null);
     setAssessment(null);
-    setSessionId(null);
+    setSessionIdState(null);
     setQuizScore(null);
-    setEvaluation(null);
+    setMcqResultState(null);
+    setCodingResultState(null);
+    setEvaluationState(null);
+    clearResultStorage();
+    sessionStorage.removeItem("candAIdate.assessment");
+    sessionStorage.removeItem("candAIdate.sessionId");
   };
+
+  useEffect(() => {
+    if (sessionId) {
+      sessionStorage.setItem("candAIdate.sessionId", sessionId);
+    } else {
+      sessionStorage.removeItem("candAIdate.sessionId");
+    }
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (assessment) {
+      sessionStorage.setItem("candAIdate.assessment", JSON.stringify(assessment));
+    } else {
+      sessionStorage.removeItem("candAIdate.assessment");
+    }
+  }, [assessment]);
+
+  useEffect(() => {
+    if (mcqResult) {
+      sessionStorage.setItem(
+        "candAIdate.mcqResult",
+        JSON.stringify({ ...mcqResult, session_id: sessionId })
+      );
+    } else {
+      sessionStorage.removeItem("candAIdate.mcqResult");
+    }
+  }, [mcqResult, sessionId]);
+
+  useEffect(() => {
+    if (codingResult) {
+      sessionStorage.setItem(
+        "candAIdate.codingResult",
+        JSON.stringify({ ...codingResult, session_id: sessionId })
+      );
+    } else {
+      sessionStorage.removeItem("candAIdate.codingResult");
+    }
+  }, [codingResult, sessionId]);
+
+  useEffect(() => {
+    if (evaluation) {
+      sessionStorage.setItem(
+        "candAIdate.evaluation",
+        JSON.stringify({ ...evaluation, session_id: sessionId })
+      );
+    } else {
+      sessionStorage.removeItem("candAIdate.evaluation");
+    }
+  }, [evaluation, sessionId]);
 
   const value = {
     profile,
@@ -29,9 +145,14 @@ export function InterviewProvider({ children }) {
     setSessionId,
     quizScore,
     setQuizScore,
+    mcqResult,
+    setMcqResult,
+    codingResult,
+    setCodingResult,
     evaluation,
     setEvaluation,
-    reset,
+    reset: resetInterviewSession,
+    resetInterviewSession,
   };
 
   return (
@@ -41,10 +162,8 @@ export function InterviewProvider({ children }) {
   );
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
 export function useInterview() {
   const ctx = useContext(InterviewContext);
-  if (!ctx)
-    throw new Error("useInterview must be used within an InterviewProvider");
+  if (!ctx) throw new Error("useInterview must be used within an InterviewProvider");
   return ctx;
 }

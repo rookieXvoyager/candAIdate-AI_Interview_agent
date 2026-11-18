@@ -1,11 +1,20 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import {
+  fetchSignInMethodsForEmail,
+  getRedirectResult,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  signInWithPopup,
   signOut,
 } from "firebase/auth";
-import { auth, isFirebaseConfigured } from "../firebase";
+import {
+  auth,
+  googleProvider,
+  githubProvider,
+  microsoftProvider,
+  isFirebaseConfigured,
+} from "../firebase";
 
 const AuthContext = createContext(null);
 
@@ -25,7 +34,16 @@ export function AuthProvider({ children }) {
       setCurrentUser(user);
       setLoading(false);
     });
-    return unsubscribe;
+
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user) setCurrentUser(result.user);
+      })
+      .catch((error) => {
+        if (error?.code) console.error("OAuth redirect fallback failed:", error);
+      });
+
+    return () => unsubscribe();
   }, []);
 
   // --- Auth actions ---
@@ -54,6 +72,55 @@ export function AuthProvider({ children }) {
     return credential;
   };
 
+  const signInWithProvider = async (providerName) => {
+    const provider =
+      providerName === "google"
+        ? googleProvider
+        : providerName === "github"
+          ? githubProvider
+          : providerName === "microsoft"
+            ? microsoftProvider
+            : null;
+
+    if (!provider) throw new Error("Unsupported OAuth provider.");
+
+    try {
+      const credential = await signInWithPopup(requireAuth(), provider);
+      setCurrentUser(credential.user);
+      return credential;
+    } catch (error) {
+      if (error?.code === "auth/account-exists-with-different-credential") {
+        try {
+          const conflictingEmail =
+            error.customData?.email ||
+            error.customData?._tokenResponse?.email ||
+            "";
+          if (!conflictingEmail) throw new Error("No conflicting email returned");
+
+          const methods = await fetchSignInMethodsForEmail(
+            requireAuth(),
+            conflictingEmail
+          );
+          const labels = methods.map((method) => {
+            if (method === "google.com") return "Google";
+            if (method === "github.com") return "GitHub";
+            if (method === "microsoft.com") return "Microsoft";
+            if (method === "password") return "email/password";
+            return method;
+          });
+          error.friendlyMessage =
+            labels.length > 0
+              ? `This email is already registered with ${labels.join(" or ")}. Sign in with that method first.`
+              : "This email is already registered with a different sign-in method.";
+        } catch {
+          error.friendlyMessage =
+            "This email is already registered with a different sign-in method.";
+        }
+      }
+      throw error;
+    }
+  };
+
   const logout = async () => {
     await signOut(requireAuth());
     setCurrentUser(null);
@@ -73,6 +140,7 @@ export function AuthProvider({ children }) {
     loading,
     signIn,
     signUp,
+    signInWithProvider,
     logout,
     getToken,
   };

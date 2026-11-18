@@ -1,75 +1,92 @@
 import os
-from dotenv import load_dotenv
+
 from google import genai
-from google.genai import types  # Imported to enable Search Grounding
-from openai import AsyncOpenAI 
+from groq import AsyncGroq
+from pydantic import BaseModel
+
 from app.core.config import settings
 
-# Load environment variables from your .env file
-load_dotenv()
 
-# Initialize the modern Gemini client explicitly with the API key from your environment
-api_key = os.getenv("GEMINI_API_KEY")
-client = genai.Client(api_key=api_key)
+class JDResponse(BaseModel):
+    jd_text: str
+
+
+def _fallback_jd(role: str, experience: str) -> str:
+    return (
+        f"**Role:** {experience} {role}\n\n"
+        "**Overview:**\n"
+        "We are looking for a skilled professional to join our dynamic team.\n\n"
+        "**Key Responsibilities:**\n"
+        "- Design and build scalable solutions.\n"
+        "- Maintain code quality.\n\n"
+        "**Qualifications:**\n"
+        "- Proven experience in a similar role.\n"
+        "- Strong problem-solving skills."
+    )
+
 
 async def generate_sample_jd(role: str, experience: str) -> str:
-    """
-    Generates a realistic mock job description using the modern google-genai SDK.
-    Falls back to Grok (xAI) automatically if Gemini hits a rate limit.
-    """
-    prompt = f"""
-    Write a realistic, standard Job Description for a {experience} {role}. 
-    
-    Requirements:
-    1. Keep it under 250 words.
-    2. Do NOT use markdown formatting (no bolding, no asterisks). Just use standard paragraphs and newlines.
-    3. Include a brief summary of the role, 3-4 key responsibilities, and 3-4 core requirements/skills.
-    4. Ensure the requirements match the {experience} level.
-    5. Web Search / Trending Tech: Use your real-time search capabilities to discover the absolute latest, highly-trending technologies, frameworks, libraries, and cloud platforms specific to a {role} today. Extract as many relevant tech tags as possible and embed them naturally into the core requirements.
-    """
-
-    # --- PRIMARY ENGINE: GEMINI (Modern SDK with Search Grounding) ---
-    try:
-        response = client.models.generate_content(
-            model=settings.GEMINI_MODEL, 
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())]
-            )
-        )
-        return response.text.strip()
-        
-    except Exception as e:
-        err_str = str(e).lower()
-        # Trigger fallback on rate limits or service overloads
-        if "429" in err_str or "quota" in err_str or "exhausted" in err_str or "503" in err_str or "overloaded" in err_str:
-            print(f"⚠️ Gemini is rate-limited or busy. Falling back to Grok for JD Generation...")
-            return await _fallback_to_grok(prompt)
-            
-        raise e
-
-async def _fallback_to_grok(prompt: str) -> str:
-    """
-    Fallback engine that calls xAI's Grok model using the OpenAI SDK.
-    """
-    grok_key = os.getenv("GROK_API_KEY")
-    if not grok_key or grok_key.startswith("xai-your-grok"):
-        raise Exception("Gemini rate-limited, and Grok API key is not configured in .env")
-
-    openai_client = AsyncOpenAI(
-        api_key=grok_key,
-        base_url="https://api.x.ai/v1",
+    prompt = (
+        f"Generate a professional, realistic 300-word job description for a "
+        f"{experience}-level {role}. Include a brief company overview, "
+        f"key responsibilities, and required qualifications. Return ONLY the raw text."
     )
 
     try:
-        response = await openai_client.chat.completions.create(
-            model="grok-2-latest",
-            messages=[
-                {"role": "system", "content": "You are an expert HR recruiter with access to real-time tech trends."},
-                {"role": "user", "content": prompt},
-            ],
+        print("🧠 [Generator] Requesting JD from Gemini...")
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        gemini_model = getattr(
+            settings,
+            "GEMINI_MODEL",
+            "gemini-3.5-flash-lite",
         )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"🚨 Grok Fallback also failed: {str(e)}")
-        raise Exception(f"Both AI models failed to generate a response. {str(e)}")
+
+        response = client.models.generate_content(
+            model=gemini_model,
+            contents=prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_schema": JDResponse,
+            },
+        )
+        parsed = getattr(response, "parsed", None)
+        if parsed is None or not parsed.jd_text.strip():
+            raise RuntimeError("Gemini returned no parsed job description")
+        return parsed.jd_text.strip()
+
+    except Exception as gemini_err:
+        print(
+            f"⚠️ [Generator] Gemini failed: {gemini_err}. "
+            "Falling back to Groq..."
+        )
+        try:
+            groq_client = AsyncGroq(
+                api_key=os.environ.get("GROQ_API_KEY") or settings.GROQ_API_KEY
+            )
+            groq_model = os.environ.get(
+                "GROQ_MODEL",
+                settings.GROQ_MODEL,
+            )
+
+            chat_completion = await groq_client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a professional HR assistant. "
+                            "Return ONLY the raw text of the job description."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                model=groq_model,
+                temperature=0.7,
+            )
+            content = chat_completion.choices[0].message.content
+            if not content:
+                raise RuntimeError("Groq returned an empty response")
+            return content.strip()
+
+        except Exception as groq_err:
+            print(f"🚨 [Generator] Groq fallback failed: {groq_err}")
+            return _fallback_jd(role, experience)

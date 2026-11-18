@@ -38,7 +38,7 @@ function isAllowed(file) {
 
 export default function Upload() {
   const { getToken } = useAuth();
-  const { setProfile } = useInterview();
+  const { setProfile, resetInterviewSession } = useInterview();
   const navigate = useNavigate();
   const inputRef = useRef(null);
 
@@ -103,6 +103,7 @@ export default function Upload() {
 
   const handleAnalyze = async () => {
     setError("");
+    resetInterviewSession();
     if (!file) return setError("Please upload your resume first.");
     if (!jdText.trim()) return setError("Please paste or generate a target job description.");
 

@@ -9,8 +9,6 @@ import CodingAssessment from "./pages/CodingAssessment";
 import LiveInterview from "./pages/LiveInterview";
 import Feedback from "./pages/Feedback";
 import History from "./pages/History";
-
-
 export default function App() {
   return (
     <Routes>

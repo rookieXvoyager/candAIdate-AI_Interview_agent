@@ -2,11 +2,9 @@ import os
 import yaml
 import asyncio
 import time
-import traceback
 from google import genai
 from google.genai import types
 from app.core.config import settings
-from app.agents._gemini import is_quota_error
 
 # Attempt to import Groq
 try:
@@ -31,9 +29,11 @@ class InterviewerAgent:
         self.history = [{"role": "system", "content": self.system_prompt}]
         self.using_groq = False # Flag to lock into Groq if Gemini fails permanently
         
-        self._models = [ "gemini-3.5-flash", "gemini-3.1-flash-lite"]
+        self._models = settings.resolved_models
         self._model_idx = 0
         self.chat_session = self._new_session()
+        self.candidate_answer_count = 0
+        self.max_candidate_answers = 7
 
     def _new_session(self):
         model = self._models[self._model_idx]
@@ -73,7 +73,7 @@ class InterviewerAgent:
         print("   -> 🚀 [Groq Fallback] Sending message to Llama-3-70B...")
         try:
             completion = self.groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model=settings.GROQ_MODEL,
                 messages=self.history,
                 temperature=0.7,
                 max_tokens=500
@@ -135,7 +135,21 @@ class InterviewerAgent:
 
     async def generate_response(self, user_message:str)->str:
         try:
-            return await asyncio.wait_for(asyncio.to_thread(self._send, user_message), timeout=25.0)
+            self.candidate_answer_count += 1
+            response = await asyncio.wait_for(
+                asyncio.to_thread(self._send, user_message),
+                timeout=25.0,
+            )
+            if (
+                self.candidate_answer_count >= self.max_candidate_answers
+                and "[INTERVIEW_COMPLETE]" not in response
+            ):
+                return (
+                    f"{response.rstrip()} "
+                    "Thank you for your answers. That concludes the interview "
+                    "[INTERVIEW_COMPLETE]"
+                )
+            return response
         except asyncio.TimeoutError:
             print("   -> 🚨 [Timeout] Agent took longer than 25 seconds to respond!")
             return "I apologize, my analysis is taking too long. Can we try rephrasing that?"

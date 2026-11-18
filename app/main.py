@@ -22,6 +22,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "http://localhost",            
         "http://localhost:5173",       # Local React development (Vite)
         "http://127.0.0.1:5173",       # Local React development
         "http://localhost:3000",       # Local Next.js/React development

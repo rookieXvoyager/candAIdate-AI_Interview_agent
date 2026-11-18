@@ -3,6 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import ProgressBar from "./ProgressBar";
 import Logo from "./Logo";
 import AmbientBackground from "./AmbientBackground";
+import { useInterview } from "../context/InterviewContext";
 
 const navItems = [
   { to: "/dashboard", label: "New Interview" },
@@ -13,6 +14,7 @@ const navItems = [
 // and the step progress bar.
 export default function AppShell({ step, children }) {
   const { currentUser, logout } = useAuth();
+  const { resetInterviewSession } = useInterview();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -40,9 +42,20 @@ export default function AppShell({ step, children }) {
             </Link>
             <nav className="hidden items-center gap-2 sm:flex">
               {navItems.map((item) => (
-                <NavLink key={item.to} to={item.to} className={navClass}>
-                  {item.label}
-                </NavLink>
+                item.to === "/dashboard" ? (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    className={navClass}
+                    onClick={resetInterviewSession}
+                  >
+                    {item.label}
+                  </NavLink>
+                ) : (
+                  <NavLink key={item.to} to={item.to} className={navClass}>
+                    {item.label}
+                  </NavLink>
+                )
               ))}
             </nav>
           </div>
@@ -69,9 +82,20 @@ export default function AppShell({ step, children }) {
         {/* Mobile nav row */}
         <nav className="flex items-center gap-2 border-t border-white/10 px-4 py-2.5 sm:hidden">
           {navItems.map((item) => (
-            <NavLink key={item.to} to={item.to} className={navClass}>
-              {item.label}
-            </NavLink>
+            item.to === "/dashboard" ? (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={navClass}
+                onClick={resetInterviewSession}
+              >
+                {item.label}
+              </NavLink>
+            ) : (
+              <NavLink key={item.to} to={item.to} className={navClass}>
+                {item.label}
+              </NavLink>
+            )
           ))}
         </nav>
       </header>

@@ -33,7 +33,7 @@ class Assessment(BaseModel):
 async def generate_assessment(profile: ParsedProfile) -> Assessment:
     """
     Takes a structured candidate profile, loads the assessor prompt, 
-    and uses Gemini to generate a tailored 5-question MCQ test.
+    and uses Gemini to generate a tailored 20-question MCQ test.
     If Gemini fails (e.g. rate limit), falls back to Groq.
     """
     if not settings.GEMINI_API_KEY:
@@ -52,8 +52,11 @@ async def generate_assessment(profile: ParsedProfile) -> Assessment:
         system_instruction = "You are an expert technical assessor."
 
     # Feed the previously generated JSON profile straight into the prompt
+    # Note: Explicitly instructing the model to generate 20 questions to align with schema
     user_prompt = f"""
-    Generate the assessment based on this candidate profile:
+    Generate the assessment based on this candidate profile.
+    You MUST generate exactly 20 multiple-choice questions.
+    
     {profile.model_dump_json(indent=2)}
     """
     
@@ -84,11 +87,12 @@ async def generate_assessment(profile: ParsedProfile) -> Assessment:
         You must respond ONLY with a raw, valid JSON object that exactly matches this schema:
         {Assessment.model_json_schema()}
         Do not include markdown blocks, backticks, or extra text. Just the JSON string.
+        Ensure you generate exactly 20 questions.
         """
         
         print("🚀 [Assessor] Sending request to Groq Llama-3-70B...")
         completion = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=settings.GROQ_MODEL,
             messages=[
                 {"role": "system", "content": system_instruction + "\n" + schema_instructions},
                 {"role": "user", "content": user_prompt}

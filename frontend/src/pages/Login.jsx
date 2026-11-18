@@ -1,18 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Lock, AlertTriangle, Check } from "lucide-react";
 // ADDED: react-icons for social buttons
 import { FaGoogle, FaGithub, FaMicrosoft } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
-// ADDED: signInWithPopup and the exported providers from your firebase file
-import { signInWithPopup } from "firebase/auth";
 import { 
-  auth, 
+  auth,
   firebaseInitError, 
   isFirebaseConfigured,
-  googleProvider,
-  githubProvider,
-  microsoftProvider
 } from "../firebase";
 import Spinner from "../components/Spinner";
 import { LogoMark } from "../components/Logo";
@@ -36,6 +31,12 @@ function friendlyError(code) {
       return "Please enter a valid email address.";
     case "auth/popup-closed-by-user":
       return "Sign-in popup was closed before completing.";
+    case "auth/cancelled-popup-request":
+      return "Sign-in was canceled. Please try again.";
+    case "auth/popup-blocked":
+      return "The sign-in popup was blocked. Allow popups for candaidate.app and try again.";
+    case "auth/unauthorized-domain":
+      return "This domain isn't authorized for Firebase sign-in. Add candaidate.app in Firebase Authentication > Settings > Authorized domains.";
     case "auth/account-exists-with-different-credential":
       return "An account already exists with the same email address but different sign-in credentials.";
     case "auth/api-key-not-valid":
@@ -68,7 +69,7 @@ function firebaseSetupMessage() {
 }
 
 export default function Login() {
-  const { currentUser, signIn, signUp } = useAuth();
+  const { currentUser, signIn, signUp, signInWithProvider } = useAuth();
   const navigate = useNavigate();
 
   const [mode, setMode] = useState("signin"); // "signin" | "signup"
@@ -76,13 +77,67 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [activeProvider, setActiveProvider] = useState(null);
+  const recoveryTimerRef = useRef(null);
+
+  const resetLoginState = () => {
+    setBusy(false);
+    setActiveProvider(null);
+  };
 
   const isSignup = mode === "signup";
 
   // If already signed in, skip the login screen.
   useEffect(() => {
-    if (currentUser) navigate("/dashboard", { replace: true });
+    if (currentUser) {
+      resetLoginState();
+      navigate("/dashboard", { replace: true });
+    }
   }, [currentUser, navigate]);
+
+  useEffect(() => {
+    if (!activeProvider) return undefined;
+
+    const clearRecoveryTimer = () => {
+      if (recoveryTimerRef.current) {
+        window.clearTimeout(recoveryTimerRef.current);
+        recoveryTimerRef.current = null;
+      }
+    };
+
+    const recoverFromHungPopup = () => {
+      clearRecoveryTimer();
+      recoveryTimerRef.current = window.setTimeout(() => {
+        if (!auth?.currentUser) {
+          resetLoginState();
+          setError("Sign-in canceled. Please try again.");
+        }
+      }, 1500);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") recoverFromHungPopup();
+    };
+
+    window.addEventListener("focus", recoverFromHungPopup);
+    window.addEventListener("pageshow", recoverFromHungPopup);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearRecoveryTimer();
+      window.removeEventListener("focus", recoverFromHungPopup);
+      window.removeEventListener("pageshow", recoverFromHungPopup);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [activeProvider]);
+
+  useEffect(() => {
+    return () => {
+      if (recoveryTimerRef.current) {
+        window.clearTimeout(recoveryTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -112,27 +167,29 @@ export default function Login() {
     }
   };
 
-  // --- UPDATED: Social Login Handler with Popup Close Fix ---
-  const handleSocialLogin = async (provider) => {
+  const handleSocialLogin = async (providerName) => {
     try {
       setError("");
       setBusy(true);
-      await signInWithPopup(auth, provider);
-      navigate("/dashboard");
+      setActiveProvider(providerName);
+      await signInWithProvider(providerName);
+      navigate("/dashboard", { replace: true });
     } catch (err) {
-      // If the user simply closed the popup, silently reset the UI without a red error
-      if (err.code === "auth/popup-closed-by-user") {
-        console.log("User closed the login popup.");
-        setError(""); 
+      if (
+        err.code === "auth/popup-closed-by-user" ||
+        err.code === "auth/cancelled-popup-request"
+      ) {
+        setError("Sign-in canceled. Please try again.");
+        console.info("OAuth sign-in canceled:", err.code);
       } else {
         console.error("Social Auth Error:", err);
         const code = err?.code || "";
-        const message = friendlyError(code);
+        const message =
+          err?.friendlyMessage || friendlyError(code);
         setError(code ? `${message} (${code})` : message);
       }
     } finally {
-      // Always stop the loading spinner
-      setBusy(false);
+      resetLoginState();
     }
   };
 
@@ -167,7 +224,7 @@ export default function Login() {
           </h1>
           <p className="mt-5 max-w-md text-lg text-slate-400">
             A personalized mock interview built from your resume and the role you
-            want — screening quiz, live AI interviewer, and a coaching scorecard.
+            want — a screening quiz, coding round, live AI interview, and holistic coaching scorecard.
           </p>
 
           <ul className="mt-10 space-y-4">
@@ -318,7 +375,7 @@ export default function Login() {
               <div className="grid grid-cols-3 gap-3">
                 <button
                   type="button"
-                  onClick={() => handleSocialLogin(googleProvider)}
+                  onClick={() => handleSocialLogin("google")}
                   disabled={busy || !isFirebaseConfigured}
                   className="flex items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] py-2.5 text-sm transition hover:bg-white/10 disabled:opacity-50"
                   aria-label="Sign in with Google"
@@ -327,7 +384,7 @@ export default function Login() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleSocialLogin(githubProvider)}
+                  onClick={() => handleSocialLogin("github")}
                   disabled={busy || !isFirebaseConfigured}
                   className="flex items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] py-2.5 text-sm transition hover:bg-white/10 disabled:opacity-50"
                   aria-label="Sign in with GitHub"
@@ -336,7 +393,7 @@ export default function Login() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleSocialLogin(microsoftProvider)}
+                  onClick={() => handleSocialLogin("microsoft")}
                   disabled={busy || !isFirebaseConfigured}
                   className="flex items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] py-2.5 text-sm transition hover:bg-white/10 disabled:opacity-50"
                   aria-label="Sign in with Microsoft"

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # ---------------------------------------------------------
   # EXISTING CORE SERVICES
@@ -34,6 +32,7 @@ services:
         VITE_FIREBASE_STORAGE_BUCKET: ${VITE_FIREBASE_STORAGE_BUCKET}
         VITE_FIREBASE_MESSAGING_SENDER_ID: ${VITE_FIREBASE_MESSAGING_SENDER_ID}
         VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID}
+        VITE_API_URL: ${VITE_API_URL:-https://candaidate.app}
     container_name: candaidate-frontend
     restart: unless-stopped
     expose:
@@ -48,7 +47,7 @@ services:
     container_name: candaidate-caddy
     restart: unless-stopped
     ports:
-      - "80:80"   # Let's Encrypt needs this for the HTTP-01 challenge
+      - "80:80"
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
@@ -60,16 +59,27 @@ services:
     networks:
       - candaidate-net
 
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: candaidate-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --protocol http2 run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    depends_on:
+      - caddy
+    networks:
+      - candaidate-net
+
   # ---------------------------------------------------------
   # JUDGE0 CE INFRASTRUCTURE
   # ---------------------------------------------------------
   judge0-server:
     image: judge0/judge0:1.13.1
     container_name: judge0-server
+    platform: linux/amd64
     volumes:
       - ./judge0.conf:/judge0.conf:ro
-    ports:
-      - "2358:2358" # Exposed so you can test it locally via curl
     privileged: true
     restart: unless-stopped
     depends_on:
@@ -81,6 +91,7 @@ services:
   judge0-workers:
     image: judge0/judge0:1.13.1
     container_name: judge0-workers
+    platform: linux/amd64
     command: ["./scripts/workers"]
     volumes:
       - ./judge0.conf:/judge0.conf:ro

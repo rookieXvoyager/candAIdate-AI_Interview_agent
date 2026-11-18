@@ -8,21 +8,19 @@ class Settings(BaseSettings):
     # Required keys (App will throw an error on startup if this is missing from .env)
     GEMINI_API_KEY: str
 
-    # Primary model used by all agents. 
-    GEMINI_MODEL: str = "gemini-3.5-flash"
+    # Primary model used by all agents.
+    GEMINI_MODEL: str = "gemini-3.5-flash-lite"
 
     # Comma-separated fallback models tried (in order) when the primary is
     # rate-limited (HTTP 429).
-    GEMINI_FALLBACK_MODELS: str = (
-        "gemini-3.1-flash-lite"
-    )
+    GEMINI_FALLBACK_MODELS: str = "gemini-3.1-flash-lite"
 
-    # --- NEW GROK CONFIGURATION ---
-    GROK_API_KEY: Optional[str] = None
-    GROK_API_BASE: str = "https://api.x.ai/v1"
+    # Groq fallback configuration.
+    GROQ_API_KEY: Optional[str] = None
+    GROQ_API_BASE: str = "https://api.groq.com/openai/v1"
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
 
     # Optional keys (Set to None by default so the app doesn't crash if we haven't configured them yet)
-    GROQ_API_KEY: Optional[str] = None
     AZURE_SPEECH_KEY: Optional[str] = None
     AZURE_SPEECH_REGION: Optional[str] = None
     AZURE_SEARCH_ENDPOINT: Optional[str] = None

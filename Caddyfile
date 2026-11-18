@@ -1,22 +1,32 @@
-candaidate.app, www.candaidate.app {
-    handle /api/* {
-        reverse_proxy backend:8000
+:80 {
+    header Cross-Origin-Opener-Policy "same-origin-allow-popups"
+
+    # API requests go to the backend
+    @api path /api/*
+    handle @api {
+        reverse_proxy backend:8000 {
+            header_up X-Forwarded-Proto {http.request.header.X-Forwarded-Proto}
+            header_up X-Forwarded-Host {http.request.header.X-Forwarded-Host}
+        }
     }
 
+    # Health and Docs routes go to backend
     handle /health {
         reverse_proxy backend:8000
     }
-
     handle /docs {
         reverse_proxy backend:8000
     }
-
     handle /openapi.json {
         reverse_proxy backend:8000
     }
 
+    # Everything else goes to the React frontend
     handle {
-        reverse_proxy frontend:80
+        reverse_proxy frontend:80 {
+            header_up X-Forwarded-Proto {http.request.header.X-Forwarded-Proto}
+            header_up X-Forwarded-Host {http.request.header.X-Forwarded-Host}
+        }
     }
 
     encode zstd gzip

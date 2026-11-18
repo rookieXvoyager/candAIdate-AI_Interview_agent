@@ -50,6 +50,10 @@ async def interview_stream(websocket: WebSocket, session_id: str, token: str = Q
             session_data = session_doc.to_dict()
             target_role = session_data.get("targetRole", target_role)
             db_uid = session_data.get("uid")
+            session_ref.update({
+                "status": "in_progress",
+                "ended_early": False,
+            })
             
             # If we have a user ID, fetch their parsed resume profile
             if db_uid:
@@ -91,6 +95,7 @@ async def interview_stream(websocket: WebSocket, session_id: str, token: str = Q
             "text": initial_message,
             "audio_base64": ai_audio_base64
         })
+        candidate_answer_count = 0
 
         while True:
             raw_data = await websocket.receive_text()
@@ -116,6 +121,7 @@ async def interview_stream(websocket: WebSocket, session_id: str, token: str = Q
                 print(f"💬 [Text] Candidate typed: {candidate_text}")
 
             if candidate_text:
+                candidate_answer_count += 1
                 print(f"🧠 [LLM] Generating response for: {candidate_text}")
                 try:
                     ai_response_text = await agent.generate_response(candidate_text)
@@ -131,18 +137,37 @@ async def interview_stream(websocket: WebSocket, session_id: str, token: str = Q
                     ai_response_text = "I'm sorry, my core logic encountered an error."
                     ai_audio_base64 = None
 
+                interview_complete = (
+                    "[INTERVIEW_COMPLETE]" in ai_response_text
+                    or candidate_answer_count >= 7
+                )
+                clean_response = ai_response_text.replace(
+                    "[INTERVIEW_COMPLETE]",
+                    "",
+                ).strip()
+                if not clean_response:
+                    clean_response = "Thank you. That concludes the interview."
+
                 await websocket.send_json({
-                    "type": "ai_response",
-                    "text": ai_response_text,
-                    "audio_base64": ai_audio_base64
+                    "type": "ai_message",
+                    "content": clean_response,
+                    "text": clean_response,
+                    "audio_base64": ai_audio_base64,
+                    "interview_complete": interview_complete,
                 })
+                if interview_complete:
+                    await websocket.send_json({
+                        "type": "interview_complete",
+                        "content": clean_response,
+                        "text": clean_response,
+                    })
 
                 def save_transcript():
                     try:
                         session_ref.update({
                             "transcript": firestore.ArrayUnion([
                                 {"speaker": "Candidate", "text": candidate_text},
-                                {"speaker": "Interviewer", "text": ai_response_text}
+                                {"speaker": "Interviewer", "text": clean_response}
                             ])
                         })
                     except Exception as e:
@@ -154,10 +179,14 @@ async def interview_stream(websocket: WebSocket, session_id: str, token: str = Q
         print(f"🔴 [WebSocket] Disconnected: {session_id}")
         try:
             # Tell the database the session is ready to be evaluated
-            session_ref.update({"status": "ready_for_evaluation"})
+            session_ref.update({
+                "status": "ready_for_evaluation",
+                "ended_early": True,
+            })
             print("📊 [Auto-Eval] Triggering Coaching Agent...")
             async with httpx.AsyncClient() as client:
-                await client.post(f"http://127.0.0.1:8000/api/v1/evaluate/{session_id}")
+                # 🛑 FIX: Use 'backend' internal DNS instead of 127.0.0.1
+                await client.post(f"http://backend:8000/api/v1/evaluate/{session_id}")
         except Exception as e:
             print(f"🚨 [Auto-Eval Trigger Failed]: {e}")
     except Exception as e:

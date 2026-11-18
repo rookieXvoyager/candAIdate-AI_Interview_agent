@@ -11,6 +11,9 @@ from app.core.config import settings
 from app.agents._gemini import generate_with_fallback
 
 class ParsedProfile(BaseModel):
+    # --- NEW: Give Gemini an escape hatch ---
+    is_valid_resume: bool = Field(description="Set to true ONLY if the document text appears to be a genuine resume, CV, or professional profile. Set to false if it is gibberish or unrelated.")
+    
     candidate_name: str = Field(description="The full name of the candidate found on the resume.")
     core_skills: List[str] = Field(description="List of core technical skills, languages, and frameworks found in the resume.")
     experience_level: str = Field(description="Must be strictly one of: 'Entry', 'Mid', or 'Senior'.")
@@ -52,6 +55,10 @@ async def parse_resume_and_jd(resume_bytes: bytes, file_ext: str, jd_text: str) 
     except Exception as e:
         raise ValueError(f"Failed to read and extract text from the {file_ext.upper()} file: {str(e)}")
 
+    # --- NEW: Stop the process if extraction yielded nothing (e.g., Scanned PDF) ---
+    if not resume_text.strip():
+        raise ValueError("Could not extract any readable text from the document. If this is a PDF, ensure it is text-based and not a scanned image.")
+
     prompt_path = os.path.join(os.path.dirname(__file__), "..", "prompts", "parser_v1.yaml")
     try:
         with open(prompt_path, "r") as file:
@@ -85,4 +92,10 @@ async def parse_resume_and_jd(resume_bytes: bytes, file_ext: str, jd_text: str) 
     )
     
     # Return the validated Pydantic object parsed directly from Gemini's JSON output
-    return ParsedProfile.model_validate_json(response.text)
+    profile = ParsedProfile.model_validate_json(response.text)
+    
+    # --- NEW: Reject if Gemini flagged it as a fake resume ---
+    if not profile.is_valid_resume:
+         raise ValueError("The uploaded document does not appear to be a valid professional resume.")
+         
+    return profile
